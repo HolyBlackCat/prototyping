@@ -6,7 +6,7 @@ constexpr int tile_size = 12;
 
 enum class Tile
 {
-    air,
+    empty,
     wall,
     wall_a,
     wall_b,
@@ -43,21 +43,56 @@ struct Cell
     [[nodiscard]] bool Empty() const {return mid.tile == Tile{};}
 };
 
-struct Grid
+class Grid
 {
-    // Maps from the unaligned grid space to the world space.
-    Xf xf;
-
     Array2D<Cell> cells;
 
-    [[nodiscard]] bool IsEmpty() const;
-
-    [[nodiscard]] Xf GridToWorld() const;
-
-    void LoadFromFile(Stream::ReadOnlyData data);
+    // This can untrim the grid. Make sure to trim it after you're done adding tiles.
+    void Resize(ivec2 offset, ivec2 new_size);
 
     // Removes empty tiles on the sides.
     void Trim();
+
+  public:
+    // Maps from the unaligned grid space to the world space.
+    Xf xf;
+
+    void LoadFromFile(Stream::ReadOnlyData data);
+
+    [[nodiscard]] bool IsEmpty() const;
+
+    [[nodiscard]] const Array2D<Cell> Cells() const {return cells;}
+
+    // Resizes the array to include the specified rect.
+    // Then calls `void func(auto &cell)`, where `cell` is `Cell &cell(ivec2 target)`, where `target` is relative so the `pos` parameter of the function itself.
+    // `func` is only allowed to modify the specified rect, otherwise an assertion is triggered.
+    // Then trims the grid.
+    template <typename F>
+    void ModifyRegion(ivec2 pos, ivec2 size, F &&func)
+    {
+        bool should_trim = pos(any) <= 0 || (pos + size)(any) >= size;
+        ivec2 offset = clamp_min(-pos, 0);
+        Resize(offset, max(clamp_min(pos, 0) + size, offset + cells.size()));
+        func([&](ivec2 target) -> Cell &
+        {
+            ASSERT(target(all) >= 0 && target(all) < size);
+            return cells.safe_nonthrowing_at(target + pos + offset);
+        });
+        if (should_trim)
+            Trim();
+    }
+
+    // Uses `ModifyRegion` to remove the specified tile.
+    // Does nothing if the tile is out of range.
+    void RemoveTile(ivec2 pos);
+
+    [[nodiscard]] Xf GridToWorld() const;
+    [[nodiscard]] Xf WorldToGrid() const {return GridToWorld().Inverse();}
+
+    [[nodiscard]] ivec2 OtherToGrid(Xf other, ivec2 pos) const
+    {
+        return WorldToGrid() * (other * pos);
+    }
 
     void Render(Xf camera) const;
 };

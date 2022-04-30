@@ -4,7 +4,7 @@
 
 static const auto tile_info = []{
     TileInfo ret[] = {
-        TileInfo{ .tile = Tile::air },
+        TileInfo{ .tile = Tile::empty },
         TileInfo{ .tile = Tile::wall,   .tex_index = 0, .solid = true },
         TileInfo{ .tile = Tile::wall_a, .tex_index = 0, .solid = true, .corner = 0 },
         TileInfo{ .tile = Tile::wall_b, .tex_index = 0, .solid = true, .corner = 1 },
@@ -28,41 +28,15 @@ const TileInfo &GetTileInfo(Tile tile)
     return tile_info[int(tile)];
 }
 
-bool Grid::IsEmpty() const
+void Grid::Resize(ivec2 offset, ivec2 new_size)
 {
-    return (cells.size() <= 0).any();
-}
+    if (new_size(any) == 0)
+        new_size = {};
 
-Xf Grid::GridToWorld() const
-{
-    Xf ret = xf;
-    ret.pos -= ret.Matrix() * (cells.size() * tile_size / 2);
-    return ret;
-}
+    // Realign position to avoid visual movement.
+    xf.pos += xf.Matrix() * (-offset * tile_size + new_size * tile_size / 2 - cells.size() * tile_size / 2);
 
-void Grid::LoadFromFile(Stream::ReadOnlyData data)
-{
-    Json json(data.string(), 32);
-
-    try
-    {
-        auto input_layer = Tiled::LoadTileLayer(Tiled::FindLayer(json.GetView(), "mid"));
-
-        cells = Array2D<Cell>(input_layer.size());
-        for (xvec2 pos : vector_range(cells.size()))
-        {
-            int tile_index = input_layer.safe_throwing_at(pos);
-            if (tile_index < 0 || tile_index >= int(Tile::_count))
-                throw std::runtime_error(FMT("Tile {} at {} is out of range.", tile_index, pos));
-            cells.safe_throwing_at(pos).mid.tile = Tile(tile_index);
-        }
-
-        // Trim();
-    }
-    catch (std::exception &e)
-    {
-        throw std::runtime_error(FMT("While loading map `{}`:\n{}", data.name(), e.what()));
-    }
+    cells.resize(new_size, offset);
 }
 
 void Grid::Trim()
@@ -144,14 +118,55 @@ void Grid::Trim()
     if (ivec2(left, top) == ivec2() && ivec2(right, bottom) == cells.size() - 1)
         return; // No changes needed.
 
-    auto new_cells = decltype(cells)(ivec2(right - left, bottom - top) + 1);
-    for (ivec2 pos : vector_range(new_cells.size()))
-        new_cells.safe_throwing_at(pos) = std::move(cells.safe_throwing_at(pos + ivec2(left, top)));
+    Resize(-ivec2(left, top), ivec2(right - left, bottom - top) + 1);
+}
 
-    // Realign position to avoid visual movement.
-    xf.pos += xf.Matrix() * (ivec2(left, top) * tile_size + new_cells.size() * tile_size / 2 - cells.size() * tile_size / 2);
+void Grid::LoadFromFile(Stream::ReadOnlyData data)
+{
+    Json json(data.string(), 32);
 
-    cells = std::move(new_cells);
+    try
+    {
+        auto input_layer = Tiled::LoadTileLayer(Tiled::FindLayer(json.GetView(), "mid"));
+
+        cells = Array2D<Cell>(input_layer.size());
+        for (xvec2 pos : vector_range(cells.size()))
+        {
+            int tile_index = input_layer.safe_throwing_at(pos);
+            if (tile_index < 0 || tile_index >= int(Tile::_count))
+                throw std::runtime_error(FMT("Tile {} at {} is out of range.", tile_index, pos));
+            cells.safe_throwing_at(pos).mid.tile = Tile(tile_index);
+        }
+
+        Trim();
+    }
+    catch (std::exception &e)
+    {
+        throw std::runtime_error(FMT("While loading map `{}`:\n{}", data.name(), e.what()));
+    }
+}
+
+bool Grid::IsEmpty() const
+{
+    return (cells.size() <= 0).any();
+}
+
+void Grid::RemoveTile(ivec2 pos)
+{
+    if (!cells.pos_in_range(pos))
+        return; // Out of range.
+
+    if (Cells().safe_nonthrowing_at(pos).mid.tile == Tile::empty)
+        return; // No tile.
+
+    ModifyRegion(pos, ivec2(1), [](auto &&cell){cell(ivec2(0)).mid.tile = Tile::empty;});
+}
+
+Xf Grid::GridToWorld() const
+{
+    Xf ret = xf;
+    ret.pos -= ret.Matrix() * (cells.size() * tile_size / 2);
+    return ret;
 }
 
 void Grid::Render(Xf camera) const
