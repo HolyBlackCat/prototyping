@@ -54,7 +54,7 @@ class Grid
     void Trim();
 
   public:
-    // Maps from the unaligned grid space to the world space.
+    // Maps from the unaligned grid space (origin in the corner) to the world space.
     Xf xf;
 
     void LoadFromFile(Stream::ReadOnlyData data);
@@ -86,6 +86,7 @@ class Grid
     // Does nothing if the tile is out of range.
     void RemoveTile(ivec2 pos);
 
+    // Maps from the grid space (with the origin in the center, unlike `xf`) to the world space.
     [[nodiscard]] Xf GridToWorld() const;
     [[nodiscard]] Xf WorldToGrid() const {return GridToWorld().Inverse();}
 
@@ -95,4 +96,20 @@ class Grid
     }
 
     void Render(Xf camera) const;
+
+    enum class DebugRenderFlags
+    {
+        none = 0,
+        // The AABB for the cells.
+        aabb = 1 << 0,
+        // The coodinate axes, using the centered origin.
+        coordinate_system = 1 << 1,
+        // A dot at the tile origin (in the top-left corner).
+        tile_origin = 1 << 2,
+
+        all = aabb | coordinate_system | tile_origin,
+    };
+    IMP_ENUM_FLAG_OPERATORS_IN_CLASS(DebugRenderFlags)
+
+    void DebugRender(Xf camera, DebugRenderFlags flags) const;
 };

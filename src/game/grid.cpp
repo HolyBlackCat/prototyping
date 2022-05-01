@@ -206,3 +206,55 @@ void Grid::Render(Xf camera) const
         r.iquad(tile_pix_pos, region.region(ivec2(corner + 1, info.tex_index) * tile_size, ivec2(tile_size)));
     }
 }
+
+void Grid::DebugRender(Xf camera, DebugRenderFlags flags) const
+{
+    if (flags == DebugRenderFlags::none)
+        return;
+
+    Xf render_xf = camera.Inverse() * GridToWorld();
+
+    if (bool(flags & DebugRenderFlags::aabb))
+    {
+        fvec3 color(0,0.8,0.8);
+        float alpha = 1;
+
+        ivec2 a = render_xf * ivec2(0);
+        ivec2 b = render_xf * (cells.size() * tile_size);
+        sort_two_var(a, b);
+
+
+        // Top.
+        r.iquad(a-1, ivec2(b.x - a.x + 2, 1)).color(color).alpha(alpha);
+        // Bottom
+        r.iquad(ivec2(a.x - 1, b.y), ivec2(b.x - a.x + 2, 1)).color(color).alpha(alpha);
+        // Left.
+        r.iquad(a with(x -= 1), ivec2(1, b.y - a.y)).color(color).alpha(alpha);
+        // Right.
+        r.iquad(ivec2(b.x, a.y), ivec2(1, b.y - a.y)).color(color).alpha(alpha);
+    }
+
+    if (bool(flags & DebugRenderFlags::coordinate_system))
+    {
+        int len = 32;
+        float alpha = 1;
+
+        Xf centered_xf = camera.Inverse() * xf;
+
+        ivec2 center = centered_xf * ivec2(0);
+        ivec2 a = centered_xf.Matrix() * ivec2(1,0);
+        ivec2 b = centered_xf.Matrix() * ivec2(0,1);
+
+        r.iquad(center, a * len + a.rot90().abs()).color(fvec3(1,0,0)).alpha(alpha);
+        r.iquad(center, b * len + b.rot90().abs()).color(fvec3(0,1,0)).alpha(alpha);
+        r.iquad(center, ivec2(1)).color(fvec3(1,1,0)).alpha(alpha);
+    }
+
+    if (bool(flags & DebugRenderFlags::tile_origin))
+    {
+        float alpha = 1;
+        ivec2 pos = render_xf * ivec2(0,0);
+        r.iquad(pos - 2, ivec2(4)).color(fvec3(0,0.8,0.8)).alpha(alpha);
+        r.iquad(pos - 1, ivec2(2)).color(fvec3(0)).alpha(alpha);
+    }
+}

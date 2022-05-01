@@ -47,6 +47,7 @@ namespace States
             r.BindShader();
 
             my_grid.Render(camera);
+            my_grid.DebugRender(camera, Grid::DebugRenderFlags::all);
 
             r.Finish();
         }
