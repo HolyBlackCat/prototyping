@@ -10,6 +10,8 @@
 #include <utility>
 #include <vector>
 
+#include <parallel_hashmap/phmap.h>
+
 #include "audio/complete.h"
 #include "gameutils/adaptive_viewport.h"
 #include "gameutils/fps_counter.h"

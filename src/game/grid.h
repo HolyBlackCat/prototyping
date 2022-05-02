@@ -25,6 +25,14 @@ struct TileInfo
 
 [[nodiscard]] const TileInfo &GetTileInfo(Tile tile);
 
+namespace TileHitboxes
+{
+    [[nodiscard]] const std::vector<ivec2> &GetHitboxPoints(int index);
+
+    // `corner`: -1 = full tile, 0 = |/, 1 = \|, 2 = /|, 3 = |\.
+    [[nodiscard]] int GetHitboxPointsMaskFull(int corner);
+}
+
 struct CellLayer
 {
     Tile tile{};
@@ -47,11 +55,21 @@ class Grid
 {
     Array2D<Cell> cells;
 
+    // Maps tile position to their hitbox points, if any.
+    // The hitbox is represented as a bit mask. Pass individual bit numbers to `TileHitboxes::GetHitboxPoints(i)`.
+    // The `..._min` map only contains a minimal set of points, enough to ensure movement without adding new collisions.
+    // The `..._full` map contains enough points to detect any collisions.
+    phmap::flat_hash_map<ivec2, int> hitbox_points_min, hitbox_points_full;
+
     // This can untrim the grid. Make sure to trim it after you're done adding tiles.
     void Resize(ivec2 offset, ivec2 new_size);
 
     // Removes empty tiles on the sides.
-    void Trim();
+    // Returns the non-negative trim offset for the top-left corners.
+    ivec2 Trim();
+
+    // Update hitbox points for the specified rect.
+    void RegenerateHitboxPointsInRect(ivec2 pos, ivec2 size);
 
   public:
     // Maps from the unaligned grid space (origin in the corner) to the world space.
@@ -79,7 +97,16 @@ class Grid
             return cells.safe_nonthrowing_at(target + pos + offset);
         });
         if (should_trim)
-            Trim();
+            offset -= Trim();
+
+        pos += offset;
+        ivec2 clamped_pos = clamp_min(pos);
+        size -= clamped_pos - pos;
+        pos = clamped_pos;
+        clamp_var_max(size, cells.size() - pos);
+
+        if (size(all) > 0)
+            RegenerateHitboxPointsInRect(pos, size);
     }
 
     // Uses `ModifyRegion` to remove the specified tile.
@@ -106,8 +133,10 @@ class Grid
         coordinate_system = 1 << 1,
         // A dot at the tile origin (in the top-left corner).
         tile_origin = 1 << 2,
+        // Hitbox points.
+        hitbox_points = 1 << 3,
 
-        all = aabb | coordinate_system | tile_origin,
+        all = aabb | coordinate_system | tile_origin | hitbox_points,
     };
     IMP_ENUM_FLAG_OPERATORS_IN_CLASS(DebugRenderFlags)
 

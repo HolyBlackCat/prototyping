@@ -28,6 +28,54 @@ const TileInfo &GetTileInfo(Tile tile)
     return tile_info[int(tile)];
 }
 
+namespace TileHitboxes
+{
+    static const std::vector<std::vector<ivec2>> hitbox_point_patterns = {
+        {ivec2(0,0)},           // 0 = ['  ]
+        {ivec2(tile_size-1,0)}, // 1 = [  ']
+        {ivec2(tile_size-1)},   // 2 = [  .]
+        {ivec2(0,tile_size-1)}, // 3 = [.  ]
+        []{                     // 4 = [ \ ]
+            std::vector<ivec2> ret;
+            for (int i = 1; i < tile_size - 1; i++)
+                ret.push_back(ivec2(i));
+            return ret;
+        }(),
+        []{                     // 5 = [ / ]
+            std::vector<ivec2> ret;
+            for (int i = 1; i < tile_size - 1; i++)
+                ret.push_back(ivec2(tile_size - i - 1, i));
+            return ret;
+        }(),
+    };
+
+    const std::vector<ivec2> &GetHitboxPoints(int index)
+    {
+        if (index < 0 || std::size_t(index) >= std::size(hitbox_point_patterns))
+            throw std::runtime_error(FMT("Point-hitbox index is out of range: {}", index));
+        return hitbox_point_patterns[index];
+    }
+
+    int GetHitboxPointsMaskFull(int corner)
+    {
+        // -1 = full tile, 0 = |/, 1 = \|, 2 = /|, 3 = |\.
+        switch (corner)
+        {
+          case -1:
+            return 0b001111;
+          case 0:
+            return 0b101011;
+          case 1:
+            return 0b010111;
+          case 2:
+            return 0b101110;
+          case 3:
+            return 0b011101;
+        }
+        throw std::runtime_error("Invalid corner id.");
+    }
+}
+
 void Grid::Resize(ivec2 offset, ivec2 new_size)
 {
     if (new_size(any) == 0)
@@ -37,12 +85,47 @@ void Grid::Resize(ivec2 offset, ivec2 new_size)
     xf.pos += xf.Matrix() * (-offset * tile_size + new_size * tile_size / 2 - cells.size() * tile_size / 2);
 
     cells.resize(new_size, offset);
+
+    { // Trim hitbox points outside of the new rect, and offset the remaining points.
+        // If this is true, we copy the map to a new location to offset the points, ignoring the out-of-range points.
+        // Otherwise we remove the out-of-range points in place.
+        bool need_offset = offset != 0;
+
+        for (auto *map : {&hitbox_points_full, &hitbox_points_min})
+        {
+            phmap::flat_hash_map<ivec2, int> new_map;
+            if (need_offset)
+                new_map.reserve(map->size());
+
+            for (auto it = map->begin(); it != map->end();)
+            {
+                ivec2 rel_pos = it->first + offset;
+                if (rel_pos(any) < 0 || rel_pos(any) >= new_size)
+                {
+                    if (need_offset)
+                        it++;
+                    else
+                        it = map->erase(it);
+                }
+                else
+                {
+                    if (need_offset)
+                        new_map.try_emplace(rel_pos, it->second);
+
+                    ++it;
+                }
+            }
+
+            if (need_offset)
+                *map = std::move(new_map);
+        }
+    }
 }
 
-void Grid::Trim()
+ivec2 Grid::Trim()
 {
     if (IsEmpty())
-        return; // No cells.
+        return {}; // No cells.
 
     int top = 0;
     for (; top < cells.size().y; top++)
@@ -64,7 +147,7 @@ void Grid::Trim()
     {
         // All cells are empty.
         cells = {};
-        return;
+        return {};
     }
 
     int bottom = cells.size().y - 1;
@@ -116,9 +199,25 @@ void Grid::Trim()
     }
 
     if (ivec2(left, top) == ivec2() && ivec2(right, bottom) == cells.size() - 1)
-        return; // No changes needed.
+        return {}; // No changes needed.
 
     Resize(-ivec2(left, top), ivec2(right - left, bottom - top) + 1);
+
+    return ivec2(left, top);
+}
+
+void Grid::RegenerateHitboxPointsInRect(ivec2 pos, ivec2 size)
+{
+    for (ivec2 tile_pos : vector_range(size) + pos)
+    {
+        const TileInfo &info = cells.safe_throwing_at(tile_pos).mid.Info();
+        if (!info.solid)
+        {
+            hitbox_points_full.erase(tile_pos);
+            continue;
+        }
+        hitbox_points_full.try_emplace(tile_pos).first->second = TileHitboxes::GetHitboxPointsMaskFull(info.corner);
+    }
 }
 
 void Grid::LoadFromFile(Stream::ReadOnlyData data)
@@ -263,5 +362,23 @@ void Grid::DebugRender(Xf camera, DebugRenderFlags flags) const
         ivec2 pos = render_xf * ivec2(0,0);
         r.iquad(pos - 2, ivec2(4)).color(fvec3(0,0.8,0.8)).alpha(alpha);
         r.iquad(pos - 1, ivec2(2)).color(fvec3(0)).alpha(alpha);
+    }
+
+    if (bool(flags & DebugRenderFlags::hitbox_points))
+    {
+        fvec3 color(1,0,1);
+        float alpha = 0.5;
+
+        for (const auto &[tile, mask] : hitbox_points_full)
+        {
+            for (int i = 0, cur_mask = mask; cur_mask; cur_mask >>= 1, i++)
+            {
+                if ((cur_mask & 1) == 0)
+                    continue;
+
+                for (ivec2 point : TileHitboxes::GetHitboxPoints(i))
+                    r.iquad(render_xf * (point + tile * tile_size), ivec2(1)).color(color).alpha(alpha);
+            }
+        }
     }
 }
