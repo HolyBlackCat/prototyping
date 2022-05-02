@@ -129,16 +129,23 @@ void Grid::LoadFromFile(Stream::ReadOnlyData data)
     {
         auto input_layer = Tiled::LoadTileLayer(Tiled::FindLayer(json.GetView(), "mid"));
 
-        cells = Array2D<Cell>(input_layer.size());
-        for (xvec2 pos : vector_range(cells.size()))
+        // Validate the tiles in the file.
+        for (ivec2 pos : vector_range(cells.size()))
         {
             int tile_index = input_layer.safe_throwing_at(pos);
             if (tile_index < 0 || tile_index >= int(Tile::_count))
                 throw std::runtime_error(FMT("Tile {} at {} is out of range.", tile_index, pos));
-            cells.safe_throwing_at(pos).mid.tile = Tile(tile_index);
         }
 
-        Trim();
+        // Remove the existing grid contents.
+        Resize(ivec2(0), ivec2(0));
+
+        // Copy the tiles into the grid.
+        ModifyRegion(ivec2(0), input_layer.size(), [&](auto &&cell)
+        {
+            for (ivec2 pos : vector_range(cells.size()))
+            cell(pos).mid.tile = Tile(input_layer.safe_throwing_at(pos));
+        });
     }
     catch (std::exception &e)
     {
