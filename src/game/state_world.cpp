@@ -15,6 +15,8 @@ namespace States
         World()
         {
             my_grid.LoadFromFile(Program::ExeDir() + "assets/test_ship.json");
+
+            SDL_MaximizeWindow(Interface::Window::Get().Handle());
         }
 
         void Tick(std::string &next_state) override

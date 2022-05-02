@@ -5,11 +5,11 @@
 static const auto tile_info = []{
     TileInfo ret[] = {
         TileInfo{ .tile = Tile::empty },
-        TileInfo{ .tile = Tile::wall,   .tex_index = 0, .solid = true },
-        TileInfo{ .tile = Tile::wall_a, .tex_index = 0, .solid = true, .corner = 0 },
-        TileInfo{ .tile = Tile::wall_b, .tex_index = 0, .solid = true, .corner = 1 },
-        TileInfo{ .tile = Tile::wall_c, .tex_index = 0, .solid = true, .corner = 2 },
-        TileInfo{ .tile = Tile::wall_d, .tex_index = 0, .solid = true, .corner = 3 },
+        TileInfo{ .tile = Tile::wall,   .tex_index = 0, .corner = -1 },
+        TileInfo{ .tile = Tile::wall_a, .tex_index = 0, .corner = 0  },
+        TileInfo{ .tile = Tile::wall_b, .tex_index = 0, .corner = 1  },
+        TileInfo{ .tile = Tile::wall_c, .tex_index = 0, .corner = 2  },
+        TileInfo{ .tile = Tile::wall_d, .tex_index = 0, .corner = 3  },
     };
     if (std::size(ret) != std::to_underlying(Tile::_count))
         throw std::runtime_error(FMT("Wrong size of the tile info array: {}, but expected {}.", std::size(ret), std::to_underlying(Tile::_count)));
@@ -61,6 +61,8 @@ namespace TileHitboxes
         // -1 = full tile, 0 = |/, 1 = \|, 2 = /|, 3 = |\.
         switch (corner)
         {
+          case -2:
+            return 0;
           case -1:
             return 0b001111;
           case 0:
@@ -73,6 +75,11 @@ namespace TileHitboxes
             return 0b011101;
         }
         throw std::runtime_error("Invalid corner id.");
+    }
+
+    int GetHitboxPointsMaskPossibleMin(int corner)
+    {
+        return GetHitboxPointsMaskFull(corner) & 0b1111;
     }
 }
 
@@ -208,15 +215,32 @@ ivec2 Grid::Trim()
 
 void Grid::RegenerateHitboxPointsInRect(ivec2 pos, ivec2 size)
 {
+    // Update the full hitbox.
     for (ivec2 tile_pos : vector_range(size) + pos)
     {
-        const TileInfo &info = cells.safe_throwing_at(tile_pos).mid.Info();
-        if (!info.solid)
-        {
+        int mask = TileHitboxes::GetHitboxPointsMaskFull(cells.safe_throwing_at(tile_pos).mid.Info().corner);
+        if (mask == 0)
             hitbox_points_full.erase(tile_pos);
-            continue;
-        }
-        hitbox_points_full.try_emplace(tile_pos).first->second = TileHitboxes::GetHitboxPointsMaskFull(info.corner);
+        else
+            hitbox_points_full.insert_or_assign(tile_pos, mask);
+    }
+
+    // Update the minimal hitbox.
+    for (ivec2 tile_pos : clamp_min(pos - 1) <= vector_range < clamp_max(pos + size + 1, cells.size()))
+    {
+        int mask = TileHitboxes::GetHitboxPointsMaskPartial(cells.safe_throwing_at(tile_pos).mid.Info().corner,
+            [&](ivec2 offset)
+            {
+                ivec2 this_pos = tile_pos + offset;
+                if (!cells.pos_in_range(this_pos))
+                    return 0;
+                return TileHitboxes::GetHitboxPointsMaskPossibleMin(cells.safe_throwing_at(this_pos).mid.Info().corner);
+            }
+        );
+        if (mask == 0)
+            hitbox_points_min.erase(tile_pos);
+        else
+            hitbox_points_min.insert_or_assign(tile_pos, mask);
     }
 }
 
@@ -366,9 +390,10 @@ void Grid::DebugRender(Xf camera, DebugRenderFlags flags) const
 
     if (bool(flags & DebugRenderFlags::hitbox_points))
     {
-        fvec3 color(1,0,1);
-        float alpha = 0.5;
+        fvec3 color_full(1,0,1), color_min(0,0.5,1);
+        float alpha = 1;
 
+        // Full hitbox.
         for (const auto &[tile, mask] : hitbox_points_full)
         {
             for (int i = 0, cur_mask = mask; cur_mask; cur_mask >>= 1, i++)
@@ -377,7 +402,20 @@ void Grid::DebugRender(Xf camera, DebugRenderFlags flags) const
                     continue;
 
                 for (ivec2 point : TileHitboxes::GetHitboxPoints(i))
-                    r.iquad(render_xf * (point + tile * tile_size), ivec2(1)).color(color).alpha(alpha);
+                    r.iquad(render_xf * (point + tile * tile_size), ivec2(1)).color(color_full).alpha(alpha);
+            }
+        }
+
+        // Minimal hitbox.
+        for (const auto &[tile, mask] : hitbox_points_min)
+        {
+            for (int i = 0, cur_mask = mask; cur_mask; cur_mask >>= 1, i++)
+            {
+                if ((cur_mask & 1) == 0)
+                    continue;
+
+                for (ivec2 point : TileHitboxes::GetHitboxPoints(i))
+                    r.iquad(render_xf * (point + tile * tile_size), ivec2(1)).color(color_min).alpha(alpha);
             }
         }
     }

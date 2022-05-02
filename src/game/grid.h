@@ -19,18 +19,74 @@ struct TileInfo
 {
     Tile tile{};
     int tex_index = -1; // -1 = invisible.
-    bool solid = false;
-    int corner = -1; // -1 = full tile, 0 = |/, 1 = \|, 2 = /|, 3 = |\.
+    int corner = -2; // -2 = empty, -1 = full tile, 0 = |/, 1 = \|, 2 = /|, 3 = |\.
 };
 
 [[nodiscard]] const TileInfo &GetTileInfo(Tile tile);
 
 namespace TileHitboxes
 {
+    //   0----1
+    //   |    |   \4    5/
+    //   |    |    \    /
+    //   2----3
     [[nodiscard]] const std::vector<ivec2> &GetHitboxPoints(int index);
 
-    // `corner`: -1 = full tile, 0 = |/, 1 = \|, 2 = /|, 3 = |\.
+    // Returns the points of the full hitbox for the specified corner.
+    // `corner`: -2 = empty, -1 = full tile, 0 = |/, 1 = \|, 2 = /|, 3 = |\.
     [[nodiscard]] int GetHitboxPointsMaskFull(int corner);
+    // Returns the possible points of the minial hitbox for the specified corner.
+    [[nodiscard]] int GetHitboxPointsMaskPossibleMin(int corner);
+
+    // Returns the true minimal hitbox for a tile, a subset of `GetHitboxPointsMaskPossibleMin()`.
+    // `possible_min_points_at_offset` is `int possible_min_points_at_offset(ivec2 offset)`.
+    // It should return the result of `GetHitboxPointsMaskPossibleMin` on an adjacent tile, at `offset`.
+    [[nodiscard]] int GetHitboxPointsMaskPartial(int corner, auto &&possible_min_points_at_offset)
+    {
+        int mask = GetHitboxPointsMaskPossibleMin(corner);
+        if (mask == 0)
+            return 0;
+
+        int original_mask = mask;
+
+        // Corner points are removed when neighbor tiles have POSSIBLE points in certain locations.
+        //  \|    |/       \|
+        // --#::::#--       #.
+        //   ::::::         :::.
+        //   ::::::         :::::.
+        // --#::::#--     --#::::#--
+        //  /|    |\        |     \    <-- Bars show the tested directions.
+
+        // Check diagonal neighbors. This works for all tile types.
+        if ((mask & 0b0001) && (possible_min_points_at_offset(ivec2(-1,-1)) & 0b0100)) mask &= ~0b0001;
+        if ((mask & 0b0010) && (possible_min_points_at_offset(ivec2( 1,-1)) & 0b1000)) mask &= ~0b0010;
+        if ((mask & 0b0100) && (possible_min_points_at_offset(ivec2( 1, 1)) & 0b0001)) mask &= ~0b0100;
+        if ((mask & 0b1000) && (possible_min_points_at_offset(ivec2(-1, 1)) & 0b0010)) mask &= ~0b1000;
+
+        // Check non-diagnoal neighbors.
+        if (original_mask & 0b0001)
+        {
+            if ((mask & 0b0010) && (possible_min_points_at_offset(ivec2( 1, 0)) & 0b0001)) mask &= ~0b0010;
+            if ((mask & 0b1000) && (possible_min_points_at_offset(ivec2( 0, 1)) & 0b0001)) mask &= ~0b1000;
+        }
+        if (original_mask & 0b0010)
+        {
+            if ((mask & 0b0001) && (possible_min_points_at_offset(ivec2(-1, 0)) & 0b0010)) mask &= ~0b0001;
+            if ((mask & 0b0100) && (possible_min_points_at_offset(ivec2( 0, 1)) & 0b0010)) mask &= ~0b0100;
+        }
+        if (original_mask & 0b0100)
+        {
+            if ((mask & 0b0010) && (possible_min_points_at_offset(ivec2( 0,-1)) & 0b0100)) mask &= ~0b0010;
+            if ((mask & 0b1000) && (possible_min_points_at_offset(ivec2(-1, 0)) & 0b0100)) mask &= ~0b1000;
+        }
+        if (original_mask & 0b1000)
+        {
+            if ((mask & 0b0001) && (possible_min_points_at_offset(ivec2( 0,-1)) & 0b1000)) mask &= ~0b0001;
+            if ((mask & 0b0100) && (possible_min_points_at_offset(ivec2( 1, 0)) & 0b1000)) mask &= ~0b0100;
+        }
+
+        return mask;
+    }
 }
 
 struct CellLayer
@@ -69,6 +125,7 @@ class Grid
     ivec2 Trim();
 
     // Update hitbox points for the specified rect.
+    // This will also partially update a 1-tile area around the rect, even if the rect is empty.
     void RegenerateHitboxPointsInRect(ivec2 pos, ivec2 size);
 
   public:
@@ -88,6 +145,9 @@ class Grid
     template <typename F>
     void ModifyRegion(ivec2 pos, ivec2 size, F &&func)
     {
+        if (size(any) <= 0)
+            return; // Empty rect.
+
         bool should_trim = pos(any) <= 0 || (pos + size)(any) >= size;
         ivec2 offset = clamp_min(-pos, 0);
         Resize(offset, max(clamp_min(pos, 0) + size, offset + cells.size()));
@@ -105,7 +165,7 @@ class Grid
         pos = clamped_pos;
         clamp_var_max(size, cells.size() - pos);
 
-        if (size(all) > 0)
+        if (size(all) >= 0) // Sic. Since it updates a 1-tile border around the rect, empty rects are workable too.
             RegenerateHitboxPointsInRect(pos, size);
     }
 
