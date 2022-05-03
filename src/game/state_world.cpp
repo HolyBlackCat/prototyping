@@ -9,12 +9,14 @@ namespace States
         MEMBERS()
 
         Grid my_grid;
+        Grid my_grid_2;
 
         Xf camera;
 
         World()
         {
             my_grid.LoadFromFile(Program::ExeDir() + "assets/test_ship.json");
+            my_grid_2 = my_grid;
 
             SDL_MaximizeWindow(Interface::Window::Get().Handle());
         }
@@ -37,6 +39,7 @@ namespace States
 
             // camera.pos = mouse.pos() * 2;
             // my_grid.xf.pos = mouse.pos() * 2;
+            my_grid.xf.pos = mouse.pos();
         }
 
         void Render() const override
@@ -46,19 +49,21 @@ namespace States
 
             r.BindShader();
 
-            my_grid.Render(camera);
+            my_grid_2.Render(camera);
+            my_grid.Render(camera, my_grid.CollidesWithGrid(my_grid_2, false) ? fvec3(1,0,0) : my_grid.CollidesWithGrid(my_grid_2, true) ? fvec3(1,1,0) : fvec3(0,1,0));
+            my_grid_2.DebugRender(camera, Grid::DebugRenderFlags::all);
             my_grid.DebugRender(camera, Grid::DebugRenderFlags::all);
 
-            { // Cursor.
-                ivec2 point = camera.TransformPixelCenteredPoint(mouse.pos());
-                bool a = my_grid.CollidesWithPointInWorldSpace(point);
-                bool b = my_grid.CollidesWithPointInWorldSpace(point, true);
-                ASSERT(b <= a);
+            // { // Cursor.
+            //     ivec2 point = camera.TransformPixelCenteredPoint(mouse.pos());
+            //     bool a = my_grid.CollidesWithPointInWorldSpace(point);
+            //     bool b = my_grid.CollidesWithPointInWorldSpace(point, true);
+            //     ASSERT(b <= a);
 
-                fvec3 color = b ? fvec3(1,0,0) : a ? fvec3(1,1,0) : fvec3(0,1,0);
-                r.iquad(mouse.pos() with(y -= 16), ivec2(1,33)).color(color);
-                r.iquad(mouse.pos() with(x -= 16), ivec2(33,1)).color(color);
-            }
+            //     fvec3 color = b ? fvec3(1,0,0) : a ? fvec3(1,1,0) : fvec3(0,1,0);
+            //     r.iquad(mouse.pos() with(y -= 16), ivec2(1,33)).color(color);
+            //     r.iquad(mouse.pos() with(x -= 16), ivec2(33,1)).color(color);
+            // }
 
             r.Finish();
         }

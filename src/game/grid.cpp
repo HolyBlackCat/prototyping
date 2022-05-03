@@ -327,7 +327,41 @@ bool Grid::CollidesWithPointInGridSpace(ivec2 point, bool shrink_diagonals) cons
     return TileHitboxes::TileCollidesWithPoint(cells.safe_throwing_at(tile_pos).mid.Info().corner, mod_ex(point, tile_size), shrink_diagonals);
 }
 
-void Grid::Render(Xf camera) const
+bool Grid::CollidesWithGridWithCustomXfDifference(const Grid &other, const Xf &this_to_other, bool full) const
+{
+    struct Job
+    {
+        const Grid *source = nullptr;
+        const Grid *target = nullptr;
+        Xf xf;
+    };
+
+    Job jobs[2] = {
+        {this, &other, this_to_other},
+        {&other, this, this_to_other.Inverse()},
+    };
+
+    for (const Job &job : jobs)
+    {
+        for (const auto &[tile, mask] : full ? job.source->hitbox_points_full : job.source->hitbox_points_min)
+        {
+            for (int i = 0, cur_mask = mask; cur_mask; cur_mask >>= 1, i++)
+            {
+                if ((cur_mask & 1) == 0)
+                    continue;
+
+                for (ivec2 point : TileHitboxes::GetHitboxPoints(i))
+                {
+                    if (job.target->CollidesWithPointInGridSpace(job.xf.TransformPixelCenteredPoint(point + tile * tile_size), true))
+                        return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+void Grid::Render(Xf camera, std::optional<fvec3> color) const
 {
     if (IsEmpty())
         return; // Empty grid.
@@ -361,7 +395,9 @@ void Grid::Render(Xf camera) const
         if (corner != -1)
             corner = mod_ex(corner + render_xf.rot, 4);
 
-        r.iquad(tile_pix_pos, region.region(ivec2(corner + 1, info.tex_index) * tile_size, ivec2(tile_size)));
+        auto quad = r.iquad(tile_pix_pos, region.region(ivec2(corner + 1, info.tex_index) * tile_size, ivec2(tile_size)));
+        if (color)
+            quad.color(*color).mix(0);
     }
 }
 

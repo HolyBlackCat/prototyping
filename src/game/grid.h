@@ -203,7 +203,22 @@ class Grid
         return CollidesWithPointInGridSpace(WorldToGrid().TransformPixelCenteredPoint(point), shrink_diagonals);
     }
 
-    void Render(Xf camera) const;
+    // Checks collisiton between two grids.
+    // Ignores grid XFs completely, only respects `this_to_other`.
+    // If `full` is false, does an incomplete test that only checks the borders.
+    [[nodiscard]] bool CollidesWithGridWithCustomXfDifference(const Grid &other, const Xf &this_to_other, bool full) const;
+    // Same, but respects our XF and their XF.
+    [[nodiscard]] bool CollidesWithGrid(const Grid &other, bool full) const
+    {
+        return CollidesWithGridWithCustomXfDifference(other, other.WorldToGrid() * GridToWorld(), full);
+    }
+    // Same, but also lets you add custom offsets.
+    [[nodiscard]] bool CollidesWithGridWithOffsets(Xf our_offset, const Grid &other, Xf other_offset, bool full) const
+    {
+        return CollidesWithGridWithCustomXfDifference(other, other_offset.Inverse() * other.WorldToGrid() * GridToWorld() * our_offset, full);
+    }
+
+    void Render(Xf camera, std::optional<fvec3> color = {}) const;
 
     enum class DebugRenderFlags
     {
