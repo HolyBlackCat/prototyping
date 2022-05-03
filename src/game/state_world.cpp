@@ -16,6 +16,7 @@ namespace States
         World()
         {
             my_grid.LoadFromFile(Program::ExeDir() + "assets/test_ship.json");
+            my_grid.xf.pos = ivec2(0);
             my_grid_2 = my_grid;
 
             SDL_MaximizeWindow(Interface::Window::Get().Handle());
@@ -51,16 +52,14 @@ namespace States
 
             my_grid_2.Render(camera);
             my_grid.Render(camera, my_grid.CollidesWithGrid(my_grid_2, false) ? fvec3(1,0,0) : my_grid.CollidesWithGrid(my_grid_2, true) ? fvec3(1,1,0) : fvec3(0,1,0));
-            my_grid_2.DebugRender(camera, Grid::DebugRenderFlags::all);
-            my_grid.DebugRender(camera, Grid::DebugRenderFlags::all);
+
+            Grid::DebugRenderFlags debug_render_flags = Grid::DebugRenderFlags::hitbox_points;
+            my_grid_2.DebugRender(camera, debug_render_flags);
+            my_grid.DebugRender(camera, debug_render_flags);
 
             // { // Cursor.
             //     ivec2 point = camera.TransformPixelCenteredPoint(mouse.pos());
-            //     bool a = my_grid.CollidesWithPointInWorldSpace(point);
-            //     bool b = my_grid.CollidesWithPointInWorldSpace(point, true);
-            //     ASSERT(b <= a);
-
-            //     fvec3 color = b ? fvec3(1,0,0) : a ? fvec3(1,1,0) : fvec3(0,1,0);
+            //     fvec3 color = my_grid.CollidesWithPointInWorldSpace(point) ? fvec3(1,0,0) : fvec3(0,1,0);
             //     r.iquad(mouse.pos() with(y -= 16), ivec2(1,33)).color(color);
             //     r.iquad(mouse.pos() with(x -= 16), ivec2(33,1)).color(color);
             // }

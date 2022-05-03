@@ -26,11 +26,44 @@ struct TileInfo
 
 namespace TileHitboxes
 {
-    //   0----1
-    //   |    |   \4    5/
-    //   |    |    \    /
-    //   2----3
-    [[nodiscard]] const std::vector<ivec2> &GetHitboxPoints(int index);
+    // Note that the collision code runs in triple resolution, because otherwise we're unable to achieve zero separation between adjacent triangle tiles: |\ \|
+    // You could think that an asymmetric collision algorithm could work (points of diagonals misaliged relative to the true hitbox by 1 pixel), but that actually doesn't work:
+    // it causes minor disagreements between minimal and full hitbox here and there. Yes, I tried both cases (1. points offset inwards, 2. triangle tile hitboxes offset inwards).
+    // A 2x resolution would kinda work, but the conversion to and from 1x resolution would be asymmetrical, which isn't good.
+
+    constexpr int highres_factor = 3;
+
+    // Converts a point from 3x to normal resolution.
+    [[nodiscard]] inline ivec2 ToNormalRes(ivec2 point) {return div_ex(point, highres_factor);}
+    // Converts a point from normal to highres_factorx resolution.
+    [[nodiscard]] inline ivec2 ToHighRes(ivec2 point) {return point * highres_factor + 1;}
+
+    // Outputs four high-res corners of a normal-resolution point.
+    // `func` is `bool func(ivec2)`. If it returns true, the function stops.
+    // Both the point and the corners are pixel-centered.
+    [[nodiscard]] bool ToHighResCorners(ivec2 point, auto &&func)
+    {
+        return
+            func(point * highres_factor) ||
+            func(point * highres_factor + ivec2(highres_factor - 1, 0)) ||
+            func(point * highres_factor + highres_factor - 1) ||
+            func(point * highres_factor + ivec2(0, highres_factor - 1));
+    }
+
+    // The numbering of points in hitbox point masks is as follows:
+    //   [ 0][ 4]------------------------[ 9][ 1]
+    //   [ 8]    [13]                [12]    [ 5]
+    //    |  [15]    [13]        [12]    [14]  |
+    //    |      [15]    [13][12]    [14]      |
+    //    |          [15][12][13][14]          |
+    //    |          [12][15][14][13]          |
+    //    |      [12]    [14][15]    [13]      |
+    //    |  [12]    [14]        [15]    [13]  |
+    //   [ 7]    [14]                [15]    [10]
+    //   [ 3][11]------------------------[ 6][ 2]
+
+    // Given a mask bit index, returns a list of points for it (see the picture above).
+    [[nodiscard]] const std::vector<ivec2> &GetHitboxPointsHighRes(int index);
 
     // Returns the points of the full hitbox for the specified corner.
     // `corner`: -2 = empty, -1 = full tile, 0 = |/, 1 = \|, 2 = /|, 3 = |\.
@@ -47,15 +80,23 @@ namespace TileHitboxes
         if (mask == 0)
             return 0;
 
-        int original_mask = mask;
-
         // Corner points are removed when neighbor tiles have POSSIBLE points in certain locations.
-        //  \|    |/       \|
-        // --#::::#--       #.
-        //   ::::::         :::.
-        //   ::::::         :::::.
-        // --#::::#--     --#::::#--
-        //  /|    |\        |     \    <-- Bars show the tested directions.
+        //   #  #                #  #   ·
+        //    \ |\              /| /    ·
+        //     \| \            / |/     ·
+        //   #--#··#··········#··#--#   ·
+        //    \ :                : /    ·
+        //     \:                :/     ·
+        //      #                #      ·
+        //      :                :      ·
+        //      :                :      ·
+        //      #                #      ·
+        //     /:                :\     ·
+        //    / :                : \    ·
+        //   #--#··#··········#··#--#   ·
+        //     /| /            \ |\     ·
+        //    / |/              \| \    ·
+        //   #  #                #  #   ·
 
         // Check diagonal neighbors. This works for all tile types.
         if ((mask & 0b0001) && (possible_min_points_at_offset(ivec2(-1,-1)) & 0b0100)) mask &= ~0b0001;
@@ -64,36 +105,23 @@ namespace TileHitboxes
         if ((mask & 0b1000) && (possible_min_points_at_offset(ivec2(-1, 1)) & 0b0010)) mask &= ~0b1000;
 
         // Check non-diagnoal neighbors.
-        if (original_mask & 0b0001)
-        {
-            if ((mask & 0b0010) && (possible_min_points_at_offset(ivec2( 1, 0)) & 0b0001)) mask &= ~0b0010;
-            if ((mask & 0b1000) && (possible_min_points_at_offset(ivec2( 0, 1)) & 0b0001)) mask &= ~0b1000;
-        }
-        if (original_mask & 0b0010)
-        {
-            if ((mask & 0b0001) && (possible_min_points_at_offset(ivec2(-1, 0)) & 0b0010)) mask &= ~0b0001;
-            if ((mask & 0b0100) && (possible_min_points_at_offset(ivec2( 0, 1)) & 0b0010)) mask &= ~0b0100;
-        }
-        if (original_mask & 0b0100)
-        {
-            if ((mask & 0b0010) && (possible_min_points_at_offset(ivec2( 0,-1)) & 0b0100)) mask &= ~0b0010;
-            if ((mask & 0b1000) && (possible_min_points_at_offset(ivec2(-1, 0)) & 0b0100)) mask &= ~0b1000;
-        }
-        if (original_mask & 0b1000)
-        {
-            if ((mask & 0b0001) && (possible_min_points_at_offset(ivec2( 0,-1)) & 0b1000)) mask &= ~0b0001;
-            if ((mask & 0b0100) && (possible_min_points_at_offset(ivec2( 1, 0)) & 0b1000)) mask &= ~0b0100;
-        }
+        if ((mask & 0b0001'0001) && (possible_min_points_at_offset(ivec2( 0,-1)) & 0b1000)) mask &= ~0b0001'0001;
+        if ((mask & 0b0010'0010) && (possible_min_points_at_offset(ivec2( 1, 0)) & 0b0001)) mask &= ~0b0010'0010;
+        if ((mask & 0b0100'0100) && (possible_min_points_at_offset(ivec2( 0, 1)) & 0b0010)) mask &= ~0b0100'0100;
+        if ((mask & 0b1000'1000) && (possible_min_points_at_offset(ivec2(-1, 0)) & 0b0100)) mask &= ~0b1000'1000;
+
+        if ((mask & 0b0001'0000'0001) && (possible_min_points_at_offset(ivec2(-1, 0)) & 0b0010)) mask &= ~0b0001'0000'0001;
+        if ((mask & 0b0010'0000'0010) && (possible_min_points_at_offset(ivec2( 0,-1)) & 0b0100)) mask &= ~0b0010'0000'0010;
+        if ((mask & 0b0100'0000'0100) && (possible_min_points_at_offset(ivec2( 1, 0)) & 0b1000)) mask &= ~0b0100'0000'0100;
+        if ((mask & 0b1000'0000'1000) && (possible_min_points_at_offset(ivec2( 0, 1)) & 0b0001)) mask &= ~0b1000'0000'1000;
 
         return mask;
     }
 
     // Checks collision of `point` against a `corner`-shaped tile.
     // `point` is assumed to be in the tile AABB, otherwise the result is meaningless.
-    // `point` is pixel-centered.
-    // If `shrink_diagonals` is true, the diagnoals are shrinked by 1 pixel (are exclusive instead of inclusive).
-    // `shrink_diagonals` should be true for testing against other tiles, and false otherwise.
-    [[nodiscard]] bool TileCollidesWithPoint(int corner, ivec2 point, bool shrink_diagonals);
+    // `point` is in double-resolution, and is pixel-centered.
+    [[nodiscard]] bool TileCollidesWithPointHighRes(int corner, ivec2 point);
 }
 
 struct CellLayer
@@ -193,20 +221,21 @@ class Grid
         return (WorldToGrid() * other).TransformPixelCenteredPoint(pos);
     }
 
-    // `point` is pixel-centered, in grid space (with the origin in the corner).
+    // `point` is in high resolution, pixel-centered, in grid space (with the origin in the corner).
     // Use `WorldToGrid()`, not `xf.inverse()`.
-    // See `TileHitboxes::TileCollidesWithPoint()` for the meaning of `shrink_diagonals`.
-    [[nodiscard]] bool CollidesWithPointInGridSpace(ivec2 point, bool shrink_diagonals = false) const;
+    [[nodiscard]] bool CollidesWithPointInGridSpaceHighRes(ivec2 point) const;
+    // Same, but the `point` is in normal resolution. Performs multiple samples to make sure connections like []\| are airtight.
+    [[nodiscard]] bool CollidesWithPointInGridSpace(ivec2 point) const;
     // Same, but in world space.
-    [[nodiscard]] bool CollidesWithPointInWorldSpace(ivec2 point, bool shrink_diagonals = false) const
+    [[nodiscard]] bool CollidesWithPointInWorldSpace(ivec2 point) const
     {
-        return CollidesWithPointInGridSpace(WorldToGrid().TransformPixelCenteredPoint(point), shrink_diagonals);
+        return CollidesWithPointInGridSpace(WorldToGrid().TransformPixelCenteredPoint(point));
     }
 
     // Checks collisiton between two grids.
     // Ignores grid XFs completely, only respects `this_to_other`.
     // If `full` is false, does an incomplete test that only checks the borders.
-    [[nodiscard]] bool CollidesWithGridWithCustomXfDifference(const Grid &other, const Xf &this_to_other, bool full) const;
+    [[nodiscard]] bool CollidesWithGridWithCustomXfDifference(const Grid &other, Xf this_to_other, bool full) const;
     // Same, but respects our XF and their XF.
     [[nodiscard]] bool CollidesWithGrid(const Grid &other, bool full) const
     {
@@ -230,7 +259,9 @@ class Grid
         // A dot at the tile origin (in the top-left corner).
         tile_origin = 1 << 2,
         // Hitbox points.
-        hitbox_points = 1 << 3,
+        hitbox_points_full = 1 << 3,
+        hitbox_points_min  = 1 << 4,
+        hitbox_points = hitbox_points_full | hitbox_points_min,
 
         all = aabb | coordinate_system | tile_origin | hitbox_points,
     };

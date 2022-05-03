@@ -30,30 +30,52 @@ const TileInfo &GetTileInfo(Tile tile)
 
 namespace TileHitboxes
 {
-    static const std::vector<std::vector<ivec2>> hitbox_point_patterns = {
-        {ivec2(0,0)},           // 0 = ['  ]
-        {ivec2(tile_size-1,0)}, // 1 = [  ']
-        {ivec2(tile_size-1)},   // 2 = [  .]
-        {ivec2(0,tile_size-1)}, // 3 = [.  ]
-        []{                     // 4 = [ \ ]
+    static constexpr int highres_tile_size = tile_size * highres_factor;
+
+    static const std::vector<std::vector<ivec2>> hitbox_point_patterns_HighRes = {
+        {ivec2(0,0)},                                     //  0 = ['   ]
+        {ivec2(highres_tile_size-1,0)},                   //  1 = [   ']
+        {ivec2(highres_tile_size-1)},                     //  2 = [   .]
+        {ivec2(0,highres_tile_size-1)},                   //  3 = [.   ]
+        {ivec2(1,0)},                                     //  4 = ['>  ]
+        {ivec2(highres_tile_size-1,1)},                   //  5 = [  v']
+        {ivec2(highres_tile_size-2,highres_tile_size-1)}, //  6 = [  <.]
+        {ivec2(0,highres_tile_size-2)},                   //  7 = [.^  ]
+        {ivec2(0,1)},                                     //  8 = ['v  ]
+        {ivec2(highres_tile_size-2,0)},                   //  9 = [  <']
+        {ivec2(highres_tile_size-1,highres_tile_size-2)}, // 10 = [  ^.]
+        {ivec2(1,highres_tile_size-1)},                   // 11 = [.>  ]
+        []{                                               // 12 = [ /  ]
             std::vector<ivec2> ret;
-            for (int i = 1; i < tile_size - 1; i++)
-                ret.push_back(ivec2(i));
+            for (int i = 1; i < highres_tile_size - 2; i++)
+                ret.push_back(ivec2(highres_tile_size - i - 2, i));
             return ret;
         }(),
-        []{                     // 5 = [ / ]
+        []{                                               // 13 = [  \ ]
             std::vector<ivec2> ret;
-            for (int i = 1; i < tile_size - 1; i++)
-                ret.push_back(ivec2(tile_size - i - 1, i));
+            for (int i = 1; i < highres_tile_size - 2; i++)
+                ret.push_back(ivec2(i+1,i));
+            return ret;
+        }(),
+        []{                                               // 14 = [ /  ]
+            std::vector<ivec2> ret;
+            for (int i = 1; i < highres_tile_size - 2; i++)
+                ret.push_back(ivec2(highres_tile_size - i - 1, i + 1));
+            return ret;
+        }(),
+        []{                                               // 15 = [  \ ]
+            std::vector<ivec2> ret;
+            for (int i = 1; i < highres_tile_size - 2; i++)
+                ret.push_back(ivec2(i,i+1));
             return ret;
         }(),
     };
 
-    const std::vector<ivec2> &GetHitboxPoints(int index)
+    const std::vector<ivec2> &GetHitboxPointsHighRes(int index)
     {
-        if (index < 0 || std::size_t(index) >= std::size(hitbox_point_patterns))
+        if (index < 0 || std::size_t(index) >= std::size(hitbox_point_patterns_HighRes))
             throw std::runtime_error(FMT("Point-hitbox index is out of range: {}", index));
-        return hitbox_point_patterns[index];
+        return hitbox_point_patterns_HighRes[index];
     }
 
     int GetHitboxPointsMaskFull(int corner)
@@ -64,26 +86,28 @@ namespace TileHitboxes
           case -2:
             return 0;
           case -1:
-            return 0b001111;
+            return 0b0000'0000'0000'1111;
           case 0:
-            return 0b101011;
+            return 0b0001'0010'1000'0001;
           case 1:
-            return 0b010111;
+            return 0b0010'0100'0001'0010;
           case 2:
-            return 0b101110;
+            return 0b0100'1000'0010'0100;
           case 3:
-            return 0b011101;
+            return 0b1000'0001'0100'1000;
         }
         throw std::runtime_error("Invalid corner id.");
     }
 
     int GetHitboxPointsMaskPossibleMin(int corner)
     {
-        return GetHitboxPointsMaskFull(corner) & 0b1111;
+        return GetHitboxPointsMaskFull(corner) & 0b0000'1111'1111'1111;
     }
 
-    bool TileCollidesWithPoint(int corner, ivec2 point, bool shrink_diagonals)
+    bool TileCollidesWithPointHighRes(int corner, ivec2 point)
     {
+        // Diagonals are exclusive, to agree with the point hitboxes.
+
         switch (corner)
         {
           case -2:
@@ -91,13 +115,13 @@ namespace TileHitboxes
           case -1:
             return true;
           case 0:
-            return point.sum() < tile_size - shrink_diagonals;
+            return point.sum() < highres_tile_size - 1;
           case 1:
-            return point.x >= point.y + shrink_diagonals;
+            return point.x > point.y;
           case 2:
-            return point.sum() >= tile_size + shrink_diagonals - 1;
+            return point.sum() > highres_tile_size - 1;
           case 3:
-            return point.x <= point.y - shrink_diagonals;
+            return point.x < point.y;
         }
         throw std::runtime_error("Invalid corner id.");
     }
@@ -319,15 +343,20 @@ Xf Grid::GridToWorld() const
     return ret;
 }
 
-bool Grid::CollidesWithPointInGridSpace(ivec2 point, bool shrink_diagonals) const
+bool Grid::CollidesWithPointInGridSpaceHighRes(ivec2 point) const
 {
-    ivec2 tile_pos = div_ex(point, tile_size);
+    ivec2 tile_pos = div_ex(point, TileHitboxes::highres_tile_size);
     if (!cells.pos_in_range(tile_pos))
         return false;
-    return TileHitboxes::TileCollidesWithPoint(cells.safe_throwing_at(tile_pos).mid.Info().corner, mod_ex(point, tile_size), shrink_diagonals);
+    return TileHitboxes::TileCollidesWithPointHighRes(cells.safe_throwing_at(tile_pos).mid.Info().corner, mod_ex(point, TileHitboxes::highres_tile_size));
 }
 
-bool Grid::CollidesWithGridWithCustomXfDifference(const Grid &other, const Xf &this_to_other, bool full) const
+bool Grid::CollidesWithPointInGridSpace(ivec2 point) const
+{
+    return TileHitboxes::ToHighResCorners(point, [&](ivec2 corner){return CollidesWithPointInGridSpaceHighRes(corner);});
+}
+
+bool Grid::CollidesWithGridWithCustomXfDifference(const Grid &other, Xf this_to_other, bool full) const
 {
     struct Job
     {
@@ -335,6 +364,8 @@ bool Grid::CollidesWithGridWithCustomXfDifference(const Grid &other, const Xf &t
         const Grid *target = nullptr;
         Xf xf;
     };
+
+    this_to_other.pos *= TileHitboxes::highres_factor;
 
     Job jobs[2] = {
         {this, &other, this_to_other},
@@ -350,9 +381,9 @@ bool Grid::CollidesWithGridWithCustomXfDifference(const Grid &other, const Xf &t
                 if ((cur_mask & 1) == 0)
                     continue;
 
-                for (ivec2 point : TileHitboxes::GetHitboxPoints(i))
+                for (ivec2 point : TileHitboxes::GetHitboxPointsHighRes(i))
                 {
-                    if (job.target->CollidesWithPointInGridSpace(job.xf.TransformPixelCenteredPoint(point + tile * tile_size), true))
+                    if (job.target->CollidesWithPointInGridSpaceHighRes(job.xf.TransformPixelCenteredPoint(point + tile * TileHitboxes::highres_tile_size)))
                         return true;
                 }
             }
@@ -452,12 +483,11 @@ void Grid::DebugRender(Xf camera, DebugRenderFlags flags) const
         r.iquad(pos - 1, ivec2(2)).color(fvec3(0)).alpha(alpha);
     }
 
-    if (bool(flags & DebugRenderFlags::hitbox_points))
+    if (bool(flags & DebugRenderFlags::hitbox_points_full))
     {
-        fvec3 color_full(1,0,1), color_min(0,0.5,1);
-        float alpha = 1;
+        fvec3 color(1,0,1);
+        float alpha = 0.6;
 
-        // Full hitbox.
         for (const auto &[tile, mask] : hitbox_points_full)
         {
             for (int i = 0, cur_mask = mask; cur_mask; cur_mask >>= 1, i++)
@@ -465,12 +495,17 @@ void Grid::DebugRender(Xf camera, DebugRenderFlags flags) const
                 if ((cur_mask & 1) == 0)
                     continue;
 
-                for (ivec2 point : TileHitboxes::GetHitboxPoints(i))
-                    r.iquad(render_xf.TransformPixelCenteredPoint(point + tile * tile_size), ivec2(1)).color(color_full).alpha(alpha);
+                for (ivec2 point : TileHitboxes::GetHitboxPointsHighRes(i))
+                    r.iquad(render_xf.TransformPixelCenteredPoint(TileHitboxes::ToNormalRes(point) + tile * tile_size), ivec2(1)).color(color).alpha(alpha);
             }
         }
+    }
 
-        // Minimal hitbox.
+    if (bool(flags & DebugRenderFlags::hitbox_points_min))
+    {
+        fvec3 color(0,0.5,1);
+        float alpha = 1;
+
         for (const auto &[tile, mask] : hitbox_points_min)
         {
             for (int i = 0, cur_mask = mask; cur_mask; cur_mask >>= 1, i++)
@@ -478,8 +513,8 @@ void Grid::DebugRender(Xf camera, DebugRenderFlags flags) const
                 if ((cur_mask & 1) == 0)
                     continue;
 
-                for (ivec2 point : TileHitboxes::GetHitboxPoints(i))
-                    r.iquad(render_xf.TransformPixelCenteredPoint(point + tile * tile_size), ivec2(1)).color(color_min).alpha(alpha);
+                for (ivec2 point : TileHitboxes::GetHitboxPointsHighRes(i))
+                    r.iquad(render_xf.TransformPixelCenteredPoint(TileHitboxes::ToNormalRes(point) + tile * tile_size), ivec2(1)).color(color).alpha(alpha);
             }
         }
     }
