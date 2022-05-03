@@ -87,6 +87,13 @@ namespace TileHitboxes
 
         return mask;
     }
+
+    // Checks collision of `point` against a `corner`-shaped tile.
+    // `point` is assumed to be in the tile AABB, otherwise the result is meaningless.
+    // `point` is pixel-centered.
+    // If `shrink_diagonals` is true, the diagnoals are shrinked by 1 pixel (are exclusive instead of inclusive).
+    // `shrink_diagonals` should be true for testing against other tiles, and false otherwise.
+    [[nodiscard]] bool TileCollidesWithPoint(int corner, ivec2 point, bool shrink_diagonals);
 }
 
 struct CellLayer
@@ -129,7 +136,7 @@ class Grid
     void RegenerateHitboxPointsInRect(ivec2 pos, ivec2 size);
 
   public:
-    // Maps from the unaligned grid space (origin in the corner) to the world space.
+    // Maps from the unaligned grid space (origin in the center) to the world space.
     Xf xf;
 
     void LoadFromFile(Stream::ReadOnlyData data);
@@ -173,13 +180,27 @@ class Grid
     // Does nothing if the tile is out of range.
     void RemoveTile(ivec2 pos);
 
-    // Maps from the grid space (with the origin in the center, unlike `xf`) to the world space.
+    // Maps from the grid space (with the origin in the corner, unlike `xf`) to the world space.
     [[nodiscard]] Xf GridToWorld() const;
     [[nodiscard]] Xf WorldToGrid() const {return GridToWorld().Inverse();}
 
     [[nodiscard]] ivec2 OtherToGrid(Xf other, ivec2 pos) const
     {
-        return WorldToGrid() * (other * pos);
+        return WorldToGrid() * other * pos;
+    }
+    [[nodiscard]] ivec2 OtherToGridPixelCentered(Xf other, ivec2 pos) const
+    {
+        return (WorldToGrid() * other).TransformPixelCenteredPoint(pos);
+    }
+
+    // `point` is pixel-centered, in grid space (with the origin in the corner).
+    // Use `WorldToGrid()`, not `xf.inverse()`.
+    // See `TileHitboxes::TileCollidesWithPoint()` for the meaning of `shrink_diagonals`.
+    [[nodiscard]] bool CollidesWithPointInGridSpace(ivec2 point, bool shrink_diagonals = false) const;
+    // Same, but in world space.
+    [[nodiscard]] bool CollidesWithPointInWorldSpace(ivec2 point, bool shrink_diagonals = false) const
+    {
+        return CollidesWithPointInGridSpace(WorldToGrid().TransformPixelCenteredPoint(point), shrink_diagonals);
     }
 
     void Render(Xf camera) const;

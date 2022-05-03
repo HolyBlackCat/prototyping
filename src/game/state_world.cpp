@@ -29,14 +29,13 @@ namespace States
             if (Input::Button(Input::a).pressed())
                 camera = camera.Rotate(1);
 
-            camera.pos = mouse.pos() * 2;
-
             if (mouse.left.released())
                 my_grid.ModifyRegion(div_ex(my_grid.OtherToGrid(camera, mouse.pos()), tile_size), ivec2(1), [](auto &&cell){cell(ivec2(0)).mid.tile = Tile::wall;});
 
             if (mouse.right.released())
                 my_grid.RemoveTile(div_ex(my_grid.OtherToGrid(camera, mouse.pos()), tile_size));
 
+            // camera.pos = mouse.pos() * 2;
             // my_grid.xf.pos = mouse.pos() * 2;
         }
 
@@ -49,6 +48,17 @@ namespace States
 
             my_grid.Render(camera);
             my_grid.DebugRender(camera, Grid::DebugRenderFlags::all);
+
+            { // Cursor.
+                ivec2 point = camera.TransformPixelCenteredPoint(mouse.pos());
+                bool a = my_grid.CollidesWithPointInWorldSpace(point);
+                bool b = my_grid.CollidesWithPointInWorldSpace(point, true);
+                ASSERT(b <= a);
+
+                fvec3 color = b ? fvec3(1,0,0) : a ? fvec3(1,1,0) : fvec3(0,1,0);
+                r.iquad(mouse.pos() with(y -= 16), ivec2(1,33)).color(color);
+                r.iquad(mouse.pos() with(x -= 16), ivec2(33,1)).color(color);
+            }
 
             r.Finish();
         }

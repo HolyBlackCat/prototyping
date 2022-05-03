@@ -81,6 +81,26 @@ namespace TileHitboxes
     {
         return GetHitboxPointsMaskFull(corner) & 0b1111;
     }
+
+    bool TileCollidesWithPoint(int corner, ivec2 point, bool shrink_diagonals)
+    {
+        switch (corner)
+        {
+          case -2:
+            return false;
+          case -1:
+            return true;
+          case 0:
+            return point.sum() < tile_size - shrink_diagonals;
+          case 1:
+            return point.x >= point.y + shrink_diagonals;
+          case 2:
+            return point.sum() >= tile_size + shrink_diagonals - 1;
+          case 3:
+            return point.x <= point.y - shrink_diagonals;
+        }
+        throw std::runtime_error("Invalid corner id.");
+    }
 }
 
 void Grid::Resize(ivec2 offset, ivec2 new_size)
@@ -297,6 +317,14 @@ Xf Grid::GridToWorld() const
     Xf ret = xf;
     ret.pos -= ret.Matrix() * (cells.size() * tile_size / 2);
     return ret;
+}
+
+bool Grid::CollidesWithPointInGridSpace(ivec2 point, bool shrink_diagonals) const
+{
+    ivec2 tile_pos = div_ex(point, tile_size);
+    if (!cells.pos_in_range(tile_pos))
+        return false;
+    return TileHitboxes::TileCollidesWithPoint(cells.safe_throwing_at(tile_pos).mid.Info().corner, mod_ex(point, tile_size), shrink_diagonals);
 }
 
 void Grid::Render(Xf camera) const
