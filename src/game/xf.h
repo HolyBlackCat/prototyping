@@ -24,6 +24,15 @@ struct Xf
         return pos + Matrix() * target;
     }
 
+    // Effectively does `*this * (target + 0.5) - 0.5`.
+    [[nodiscard]] ivec2 TransformPixelCenteredPoint(ivec2 target) const
+    {
+        imat2 mat = Matrix();
+        ivec2 ret = pos + mat * target;
+        ret -= (mat.x < 0) + (mat.y < 0);
+        return ret;
+    }
+
     [[nodiscard]] Xf operator*(const Xf &other) const
     {
         Xf ret;

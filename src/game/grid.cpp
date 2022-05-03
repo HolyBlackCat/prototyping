@@ -402,7 +402,7 @@ void Grid::DebugRender(Xf camera, DebugRenderFlags flags) const
                     continue;
 
                 for (ivec2 point : TileHitboxes::GetHitboxPoints(i))
-                    r.iquad(render_xf * (point + tile * tile_size), ivec2(1)).color(color_full).alpha(alpha);
+                    r.iquad(render_xf.TransformPixelCenteredPoint(point + tile * tile_size), ivec2(1)).color(color_full).alpha(alpha);
             }
         }
 
@@ -415,7 +415,7 @@ void Grid::DebugRender(Xf camera, DebugRenderFlags flags) const
                     continue;
 
                 for (ivec2 point : TileHitboxes::GetHitboxPoints(i))
-                    r.iquad(render_xf * (point + tile * tile_size), ivec2(1)).color(color_min).alpha(alpha);
+                    r.iquad(render_xf.TransformPixelCenteredPoint(point + tile * tile_size), ivec2(1)).color(color_min).alpha(alpha);
             }
         }
     }

@@ -37,7 +37,6 @@ namespace States
             if (mouse.right.released())
                 my_grid.RemoveTile(div_ex(my_grid.OtherToGrid(camera, mouse.pos()), tile_size));
 
-            std::cout << my_grid.Cells().size() << '\n';
             // my_grid.xf.pos = mouse.pos() * 2;
         }
 
