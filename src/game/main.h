@@ -35,5 +35,9 @@ extern Random::DefaultInterfaces<Random::DefaultGenerator> ra;
 
 STRUCT( StateBase EXTENDS GameUtils::State::Base POLYMORPHIC )
 {
+    StateBase() {}
+    StateBase(const StateBase &) = delete;
+    StateBase &operator=(const StateBase &) = delete;
+
     virtual void Render() const = 0;
 };

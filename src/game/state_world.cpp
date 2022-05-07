@@ -1,5 +1,6 @@
 #include "main.h"
 
+#include "game/grid_manager.h"
 #include "game/grid.h"
 
 namespace States
@@ -8,16 +9,18 @@ namespace States
     {
         MEMBERS()
 
-        Grid my_grid;
-        Grid my_grid_2;
+        GridManager grids;
+        GridId my_grid_id;
 
         Xf camera;
 
         World()
         {
-            my_grid.LoadFromFile(Program::ExeDir() + "assets/test_ship.json");
-            my_grid.xf.pos = ivec2(0);
-            my_grid_2 = my_grid;
+            GridObject obj;
+            obj.grid.LoadFromFile(Program::ExeDir() + "assets/test_ship.json");
+            my_grid_id = grids.AddGrid(obj);
+            obj.grid.xf.pos -= ivec2(100);
+            grids.AddGrid(obj);
 
             SDL_MaximizeWindow(Interface::Window::Get().Handle());
         }
@@ -27,20 +30,34 @@ namespace States
             (void)next_state;
 
             if (Input::Button(Input::d).pressed())
-                my_grid.xf = my_grid.xf.Rotate(1);
+                grids.ModifyGrid(my_grid_id, [](GridObject &obj){obj.grid.xf = obj.grid.xf.Rotate(1);});
 
             if (Input::Button(Input::a).pressed())
                 camera = camera.Rotate(1);
 
             if (mouse.left.released())
-                my_grid.ModifyRegion(div_ex(my_grid.OtherToGrid(camera, mouse.pos()), tile_size), ivec2(1), [](auto &&cell){cell(ivec2(0)).mid.tile = Tile::wall;});
+            {
+                grids.ModifyGrid(my_grid_id, [&](GridObject &obj)
+                {
+                    obj.grid.ModifyRegion(div_ex(obj.grid.OtherToGrid(camera, mouse.pos()), tile_size), ivec2(1), [](auto &&cell){cell(ivec2(0)).mid.tile = Tile::wall;});
+                });
+            }
+
 
             if (mouse.right.released())
-                my_grid.RemoveTile(div_ex(my_grid.OtherToGrid(camera, mouse.pos()), tile_size));
+            {
+                grids.ModifyGrid(my_grid_id, [&](GridObject &obj)
+                {
+                    obj.grid.RemoveTile(div_ex(obj.grid.OtherToGrid(camera, mouse.pos()), tile_size));
+                });
+            }
 
             // camera.pos = mouse.pos() * 2;
             // my_grid.xf.pos = mouse.pos() * 2;
-            my_grid.xf.pos = mouse.pos();
+            grids.ModifyGrid(my_grid_id, [&](GridObject &obj)
+            {
+                obj.grid.xf.pos = mouse.pos();
+            });
         }
 
         void Render() const override
@@ -50,12 +67,12 @@ namespace States
 
             r.BindShader();
 
-            my_grid_2.Render(camera);
-            my_grid.Render(camera, my_grid.CollidesWithGrid(my_grid_2, false) ? fvec3(1,0,0) : my_grid.CollidesWithGrid(my_grid_2, true) ? fvec3(1,1,0) : fvec3(0,1,0));
+            Grid::DebugRenderFlags debug_render_flags = Grid::DebugRenderFlags::all;
+            grids.Render(camera);
+            grids.DebugRender(camera, debug_render_flags);
 
-            Grid::DebugRenderFlags debug_render_flags = Grid::DebugRenderFlags::hitbox_points;
-            my_grid_2.DebugRender(camera, debug_render_flags);
-            my_grid.DebugRender(camera, debug_render_flags);
+            fvec3 color = grids.CollideGrid(my_grid_id, {}, true, [](GridId){return true;}) ? fvec3(1,0,0) : fvec3(0,1,0);
+            r.iquad(mouse.pos(), ivec2(8)).center().color(color);
 
             // { // Cursor.
             //     ivec2 point = camera.TransformPixelCenteredPoint(mouse.pos());
