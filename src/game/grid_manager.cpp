@@ -2,8 +2,8 @@
 
 #include "game/main.h"
 
-// static constexpr int aabb_tree_margin = tile_size;
-static constexpr int aabb_tree_margin = 0; // For testing only.
+static constexpr int aabb_tree_margin = tile_size;
+// static constexpr int aabb_tree_margin = 0; // For testing only.
 
 GridManager::GridManager()
     : aabb_tree(ivec2(aabb_tree_margin))

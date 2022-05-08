@@ -71,7 +71,7 @@ namespace States
             grids.Render(camera);
             grids.DebugRender(camera, debug_render_flags);
 
-            fvec3 color = grids.CollideGrid(my_grid_id, {}, true, [](GridId){return true;}) ? fvec3(1,0,0) : fvec3(0,1,0);
+            fvec3 color = grids.CollideGrid(my_grid_id, {}, false, [](GridId){return true;}) ? fvec3(1,0,0) : fvec3(0,1,0);
             r.iquad(mouse.pos(), ivec2(8)).center().color(color);
 
             // { // Cursor.

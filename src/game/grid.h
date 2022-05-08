@@ -235,6 +235,7 @@ class Grid
     // Checks collisiton between two grids.
     // Ignores grid XFs completely, only respects `this_to_other`.
     // If `full` is false, does an incomplete test that only checks the borders.
+    // Experiments show that in some case the border is 1 pixel thick, but the diagonal 1-pixel movement is safe.
     [[nodiscard]] bool CollidesWithGridWithCustomXfDifference(const Grid &other, Xf this_to_other, bool full) const;
     // Same, but respects our XF and their XF.
     [[nodiscard]] bool CollidesWithGrid(const Grid &other, bool full) const
