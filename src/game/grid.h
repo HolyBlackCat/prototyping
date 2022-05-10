@@ -174,7 +174,7 @@ class Grid
     [[nodiscard]] const Array2D<Cell> Cells() const {return cells;}
 
     // Resizes the array to include the specified rect.
-    // Then calls `void func(auto &cell)`, where `cell` is `Cell &cell(ivec2 target)`, where `target` is relative so the `pos` parameter of the function itself.
+    // Then calls `void func(auto &&cell)`, where `cell` is `Cell &cell(ivec2 target)`, where `target` is relative so the `pos` parameter of the function itself.
     // `func` is only allowed to modify the specified rect, otherwise an assertion is triggered.
     // Then trims the grid.
     template <typename F>

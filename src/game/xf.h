@@ -5,6 +5,15 @@ struct Xf
     ivec2 pos;
     int rot = 0;
 
+    Xf() {}
+
+    [[nodiscard]] static Xf Pos(ivec2 pos)
+    {
+        Xf ret;
+        ret.pos = pos;
+        return ret;
+    }
+
     [[nodiscard]] Xf Rotate(int steps) const
     {
         Xf ret;

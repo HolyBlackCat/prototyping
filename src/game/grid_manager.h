@@ -9,6 +9,7 @@ struct GridObject
 {
     Grid grid;
     fvec2 vel;
+    fvec2 vel_lag;
 
     // Don't modify. This is set automatically by the grid manager.
     int aabb_node_index = -1;
@@ -19,6 +20,14 @@ struct GridId
     int index = -1;
 
     [[nodiscard]] friend bool operator<=>(const GridId &, const GridId &) = default;
+};
+template <>
+struct std::hash<GridId>
+{
+    std::size_t operator()(const GridId &id) const
+    {
+        return std::hash<int>{}(id.index);
+    }
 };
 
 class GridManager
@@ -39,6 +48,10 @@ private:
 
     std::vector<std::optional<GridObject>> grids;
 
+    // This oscillates between 0 and 1 every time you call `TickPhysics()`.
+    // It represents the initial axis (X or Y) that the physics tick uses.
+    bool initial_dir_for_physics_tick = 0;
+
 public:
     GridManager();
 
@@ -51,6 +64,9 @@ public:
     void RemoveGrid(GridId id) noexcept;
 
     [[nodiscard]] const GridObject &GetGrid(GridId id) const;
+
+    [[nodiscard]] int GridCount() const {return grid_ids.ElemCount();}
+    [[nodiscard]] GridId GetGridId(int index) const {return {.index = grid_ids.GetElem(index)};}
 
     // Temporarily gives you a non-const reference to a grid to modify it.
     // `func` is `void func(GridObject &obj)`.
@@ -115,4 +131,6 @@ public:
 
     void Render(Xf camera) const;
     void DebugRender(Xf camera, Grid::DebugRenderFlags flags) const;
+
+    void TickPhysics();
 };
