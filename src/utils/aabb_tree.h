@@ -25,13 +25,16 @@
 // Only 2D vectors have been tested properly, the cost heuristics may not work in higher dimensions.
 // `UserData` is an arbitrary type, an instance of which will be stored in each node.
 // Keep it small, since it'll also be stored in internal non-leaf nodes, and copied around on a whim.
-template <Math::vector T, typename UserData = char>
+// If `Inclusive == false`, the second corner of AABBs is exclusive. This is more convenient when dealing integral coordinates.
+// `Inclusive == true` is intended for floating-point coordinates. It makes both AABB corners inclusive.
+template <Math::vector T, typename UserData = void, bool Inclusive = false>
 class AabbTree
 {
+    struct Empty {};
   public:
     using vector = T;
     using scalar = typename T::type;
-    using user_data = UserData;
+    using user_data = std::conditional_t<std::is_void_v<UserData>, Empty, UserData>;
 
     struct Params
     {
@@ -64,7 +67,7 @@ class AabbTree
     struct Aabb
     {
         T a; // Inclusive.
-        T b; // Exclusive. Greater or equal to `a`.
+        T b; // Normally exclusive, greater or equal to `a`. But if `Inclusive == true`, becomes inclusive.
 
         [[nodiscard]] friend constexpr bool operator==(const Aabb &, const Aabb &) = default;
 
@@ -114,19 +117,25 @@ class AabbTree
         // Returns true if `point` is contained in this AAB, inclusive.
         [[nodiscard]] bool ContainsPoint(T point) const
         {
-            return a(all) <= point && b(all) > point; // Sic, note `>`. `b` is exclusive, but `a` isn't.
+            if constexpr (Inclusive)
+                return a(all) <= point && b(all) >= point;
+            else
+                return a(all) <= point && b(all) > point; // Sic, note `>`. `b` is exclusive, but `a` isn't.
         }
 
         // Returns true if this AABB intersects with `other` in any way.
         [[nodiscard]] bool Intersects(const Aabb &other) const
         {
-            return a(all) < other.b && b(all) > other.a;
+            if constexpr (Inclusive)
+                return a(all) <= other.b && b(all) >= other.a;
+            else
+                return a(all) < other.b && b(all) > other.a;
         }
     };
 
     // Creates a new node. Returns the node index.
     // `suggested_index` allows you to force a specific index. Mostly for internal use.
-    [[nodiscard]] int AddNode(Aabb new_aabb, UserData new_data = {}, int new_index = null_index) noexcept
+    [[nodiscard]] int AddNode(Aabb new_aabb, user_data new_data = {}, int new_index = null_index) noexcept
     {
         #if IMP_AUTO_VALIDATE_AABB_TREES
         FINALLY{Validate();};
@@ -319,18 +328,18 @@ class AabbTree
 
         // The existing rect is either too big or too small.
 
-        UserData userdata = std::move(node.userdata);
+        user_data userdata = std::move(node.userdata);
 
         RemoveNode(target_index);
         (void)AddNode(large_aabb, std::move(userdata), target_index);
     }
 
     // Returns arbitrary user data for the node.
-    [[nodiscard]] UserData &GetNodeUserData(int node_index)
+    [[nodiscard]] user_data &GetNodeUserData(int node_index)
     {
-        return const_cast<UserData &>(std::as_const(*this).GetNodeUserData(node_index));
+        return const_cast<user_data &>(std::as_const(*this).GetNodeUserData(node_index));
     }
-    [[nodiscard]] const UserData &GetNodeUserData(int node_index) const
+    [[nodiscard]] const user_data &GetNodeUserData(int node_index) const
     {
         ASSERT(node_set.Contains(node_index));
         return nodes[node_index].userdata;
@@ -461,7 +470,7 @@ class AabbTree
         int children[2] = {null_index, null_index};
 
         // Arbitrary data.
-        [[no_unique_address]] UserData userdata;
+        [[no_unique_address]] user_data userdata;
 
         [[nodiscard]] bool IsLeaf() const
         {

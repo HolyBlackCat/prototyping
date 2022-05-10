@@ -7,7 +7,7 @@
 #include <sstream>
 #include <type_traits>
 
-#define VERSION "3.4.4"
+#define VERSION "3.4.6"
 
 #pragma GCC diagnostic ignored "-Wpragmas" // Silence GCC warning about the next line disabling a warning that GCC doesn't have.
 #pragma GCC diagnostic ignored "-Wstring-plus-int" // Silence clang warning about `1+R"()"` paUern.
@@ -582,6 +582,10 @@ int main(int argc, char **argv)
                             // Sum
                             output("[[nodiscard]] constexpr auto sum() const {return ", Fields(" + "), ";}\n");
 
+                            // Difference
+                            if (w == 2)
+                                output("[[nodiscard]] constexpr auto diff() const {return ", Fields(" - "), ";}\n");
+
                             // Product
                             output("[[nodiscard]] constexpr auto prod() const {return ", Fields(" * "), ";}\n");
 
@@ -674,6 +678,12 @@ int main(int argc, char **argv)
 
                                 // Return one of the 8 main directions (including diagonals).
                                 output("[[nodiscard]] static constexpr vec dir8(int index) {vec array[8]{vec(1,0),vec(1,1),vec(0,1),vec(-1,1),vec(-1,0),vec(-1,-1),vec(0,-1),vec(1,-1)}; return array[index & 7];}\n");
+
+                                // Get the 4-direction
+                                output("[[nodiscard]] constexpr type angle4() const {type s = sum(); type d = diff(); return d<0&&s>=0?1:x<0&&d<=0?2:y<0&&s<=0?3:0;} // Non-cardinal directions round to the closest one, diagnoals round backwards, (0,0) returns zero.\n");
+
+                                // Get the 8-direction
+                                output("[[nodiscard]] constexpr type angle8() const {return y>0?(x>0?1:x==0?2:3):y<0?(x<0?5:x==0?6:7):(x<0?4:0);} // Non-cardinal directions count as diagonals, (0,0) returns zero.\n");
                             }
                         }
 
@@ -1296,10 +1306,14 @@ int main(int argc, char **argv)
             for (const auto& [op, std_op] : ops2comp)
             {
                 // Default implementation without an explicit mode.
-                std::string default_mode = op == "==" ? "all" : op == "!=" ? "any" : "elemwise";
-                output("template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr ",
-                       default_mode != "elemwise" ? "bool" : "vec<common_vec_size_v<vec_size_strong_v<A>, vec_size_strong_v<B>>, bool>",
-                       " operator",op,"(const A &a, const B &b) {if constexpr (vector<A>) return compare_",default_mode,"(a) ",op," b; else return a ",op," compare_",default_mode,"(b);}\n");
+                std::string default_mode = op == "==" ? "all" : op == "!=" ? "any" : op == "&&" || op == "||" ? "" : "elemwise";
+
+                if (!default_mode.empty())
+                {
+                    output("template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr ",
+                           default_mode != "elemwise" ? "bool" : "vec<common_vec_size_v<vec_size_strong_v<A>, vec_size_strong_v<B>>, bool>",
+                           " operator",op,"(const A &a, const B &b) {if constexpr (vector<A>) return compare_",default_mode,"(a) ",op," b; else return a ",op," compare_",default_mode,"(b);}\n");
+                }
 
                 for (const std::string &mode : data::compare_modes)
                 {
@@ -1462,7 +1476,7 @@ int main(int argc, char **argv)
                 output(1+R"(
                     template <typename T> class vector_range_t
                     {
-                        static_assert(!std::is_const_v<T> && std::is_integral_v<vec_base_t<T>>, "The template parameter must be an integral vector.");
+                        static_assert(!std::is_const_v<T> && std::is_integral_v<vec_base_t<T>>, "The template parameter must be integral.");
 
                         T vec_begin = T(0);
                         T vec_end = T(0);

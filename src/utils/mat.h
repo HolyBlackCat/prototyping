@@ -1,6 +1,6 @@
 // mat.h
 // Vector and matrix math
-// Version 3.4.4
+// Version 3.4.6
 // Generated, don't touch.
 
 #pragma once
@@ -431,6 +431,7 @@ namespace Math
             [[nodiscard]] constexpr bool none() const {return !any();}
             [[nodiscard]] constexpr bool not_all() const {return !all();}
             [[nodiscard]] constexpr auto sum() const {return x + y;}
+            [[nodiscard]] constexpr auto diff() const {return x - y;}
             [[nodiscard]] constexpr auto prod() const {return x * y;}
             [[nodiscard]] constexpr auto ratio() const {return floating_point_t<type>(x) / floating_point_t<type>(y);}
             [[nodiscard]] constexpr type min() const {return std::min({x,y});}
@@ -451,6 +452,8 @@ namespace Math
             [[nodiscard]] constexpr vec rot90(int steps = 1) const {switch (steps & 3) {default: return *this; case 1: return {-y,x}; case 2: return -*this; case 3: return {y,-x};}}
             [[nodiscard]] static constexpr vec dir4(int index) {return vec(1,0).rot90(index);}
             [[nodiscard]] static constexpr vec dir8(int index) {vec array[8]{vec(1,0),vec(1,1),vec(0,1),vec(-1,1),vec(-1,0),vec(-1,-1),vec(0,-1),vec(1,-1)}; return array[index & 7];}
+            [[nodiscard]] constexpr type angle4() const {type s = sum(); type d = diff(); return d<0&&s>=0?1:x<0&&d<=0?2:y<0&&s<=0?3:0;} // Non-cardinal directions round to the closest one, diagnoals round backwards, (0,0) returns zero.
+            [[nodiscard]] constexpr type angle8() const {return y>0?(x>0?1:x==0?2:3):y<0?(x<0?5:x==0?6:7):(x<0?4:0);} // Non-cardinal directions count as diagonals, (0,0) returns zero.
             template <typename U> [[nodiscard]] constexpr auto dot(const vec2<U> &o) const {return x * o.x + y * o.y;}
             template <typename U> [[nodiscard]] constexpr auto cross(const vec2<U> &o) const {return x * o.y - y * o.x;}
             [[nodiscard]] constexpr auto tie() & {return std::tie(x,y);}
@@ -1270,7 +1273,6 @@ namespace Math
         template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr bool operator!=(const A &a, compare_not_all<B> &&b) {return not_all_nonzero_elements(apply_elementwise(std::not_equal_to{}, a, b.value));}
         template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr vec<common_vec_size_v<vec_size_strong_v<A>, vec_size_strong_v<B>>, bool> operator!=(compare_elemwise<A> &&a, const B &b) {return apply_elementwise(std::not_equal_to{}, a.value, b);}
         template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr vec<common_vec_size_v<vec_size_strong_v<A>, vec_size_strong_v<B>>, bool> operator!=(const A &a, compare_elemwise<B> &&b) {return apply_elementwise(std::not_equal_to{}, a, b.value);}
-        template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr vec<common_vec_size_v<vec_size_strong_v<A>, vec_size_strong_v<B>>, bool> operator&&(const A &a, const B &b) {if constexpr (vector<A>) return compare_elemwise(a) && b; else return a && compare_elemwise(b);}
         template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr bool operator&&(compare_any<A> &&a, const B &b) {return any_nonzero_elements(apply_elementwise(std::logical_and{}, a.value, b));}
         template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr bool operator&&(const A &a, compare_any<B> &&b) {return any_nonzero_elements(apply_elementwise(std::logical_and{}, a, b.value));}
         template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr bool operator&&(compare_all<A> &&a, const B &b) {return all_nonzero_elements(apply_elementwise(std::logical_and{}, a.value, b));}
@@ -1281,7 +1283,6 @@ namespace Math
         template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr bool operator&&(const A &a, compare_not_all<B> &&b) {return not_all_nonzero_elements(apply_elementwise(std::logical_and{}, a, b.value));}
         template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr vec<common_vec_size_v<vec_size_strong_v<A>, vec_size_strong_v<B>>, bool> operator&&(compare_elemwise<A> &&a, const B &b) {return apply_elementwise(std::logical_and{}, a.value, b);}
         template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr vec<common_vec_size_v<vec_size_strong_v<A>, vec_size_strong_v<B>>, bool> operator&&(const A &a, compare_elemwise<B> &&b) {return apply_elementwise(std::logical_and{}, a, b.value);}
-        template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr vec<common_vec_size_v<vec_size_strong_v<A>, vec_size_strong_v<B>>, bool> operator||(const A &a, const B &b) {if constexpr (vector<A>) return compare_elemwise(a) || b; else return a || compare_elemwise(b);}
         template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr bool operator||(compare_any<A> &&a, const B &b) {return any_nonzero_elements(apply_elementwise(std::logical_or{}, a.value, b));}
         template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr bool operator||(const A &a, compare_any<B> &&b) {return any_nonzero_elements(apply_elementwise(std::logical_or{}, a, b.value));}
         template <vector_or_scalar A, vector_or_scalar B> [[nodiscard]] IMP_MATH_ALWAYS_INLINE constexpr bool operator||(compare_all<A> &&a, const B &b) {return all_nonzero_elements(apply_elementwise(std::logical_or{}, a.value, b));}
@@ -1420,7 +1421,7 @@ namespace Math
         //{ Ranges
         template <typename T> class vector_range_t
         {
-            static_assert(!std::is_const_v<T> && std::is_integral_v<vec_base_t<T>>, "The template parameter must be an integral vector.");
+            static_assert(!std::is_const_v<T> && std::is_integral_v<vec_base_t<T>>, "The template parameter must be integral.");
 
             T vec_begin = T(0);
             T vec_end = T(0);
