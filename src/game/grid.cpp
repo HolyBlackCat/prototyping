@@ -32,6 +32,8 @@ namespace TileHitboxes
 {
     static constexpr int highres_tile_size = tile_size * highres_factor;
 
+    // On the diagnoals, we create points sparsely (with `highres_factor` as the step).
+    // This looks safe, but if something goes wrong, there's non-sparse version in the git history.
     static const std::vector<std::vector<ivec2>> hitbox_point_patterns_HighRes = {
         {ivec2(0,0)},                                     //  0 = ['   ]
         {ivec2(highres_tile_size-1,0)},                   //  1 = [   ']
@@ -47,29 +49,47 @@ namespace TileHitboxes
         {ivec2(1,highres_tile_size-1)},                   // 11 = [.>  ]
         []{                                               // 12 = [ /  ]
             std::vector<ivec2> ret;
-            for (int i = 1; i < highres_tile_size - 2; i++)
+            for (int i = 1 + highres_factor/2; i < highres_tile_size - 2; i += highres_factor)
                 ret.push_back(ivec2(highres_tile_size - i - 2, i));
             return ret;
         }(),
         []{                                               // 13 = [  \ ]
             std::vector<ivec2> ret;
-            for (int i = 1; i < highres_tile_size - 2; i++)
+            for (int i = 1 + highres_factor/2; i < highres_tile_size - 2; i += highres_factor)
                 ret.push_back(ivec2(i+1,i));
             return ret;
         }(),
         []{                                               // 14 = [ /  ]
             std::vector<ivec2> ret;
-            for (int i = 1; i < highres_tile_size - 2; i++)
+            for (int i = 1 + highres_factor/2; i < highres_tile_size - 2; i += highres_factor)
                 ret.push_back(ivec2(highres_tile_size - i - 1, i + 1));
             return ret;
         }(),
         []{                                               // 15 = [  \ ]
             std::vector<ivec2> ret;
-            for (int i = 1; i < highres_tile_size - 2; i++)
+            for (int i = 1 + highres_factor/2; i < highres_tile_size - 2; i += highres_factor)
                 ret.push_back(ivec2(i,i+1));
             return ret;
         }(),
     };
+
+    // Prints the hitbox points as an array.
+    [[maybe_unused]] static void DebugPrintHitboxPoints()
+    {
+        Array2D<int> arr(ivec2(tile_size * TileHitboxes::highres_factor), -1);
+        for (int i = 0; i < 16; i++)
+        {
+            for (ivec2 pos : TileHitboxes::GetHitboxPointsHighRes(i))
+                arr.safe_throwing_at(pos) = i;
+        }
+        for (ivec2 pos : vector_range(arr.size()))
+        {
+            int x = arr.safe_throwing_at(pos);
+            std::cout << (x == -1 ? "  ." : FMT("{:{}d}", x, TileHitboxes::highres_factor) );
+            if (pos.x == tile_size * TileHitboxes::highres_factor - 1)
+                std::cout << '\n';
+        }
+    }
 
     const std::vector<ivec2> &GetHitboxPointsHighRes(int index)
     {
