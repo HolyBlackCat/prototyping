@@ -323,7 +323,7 @@ void GridManager::TickPhysics()
         {
             auto TryOffset = [&, &id = id](ivec2 offset) -> bool
             {
-                auto coro = ProcessObject(ProcessObject, id, offset.angle8());
+                auto coro = ProcessObject(ProcessObject, id, offset.angle8_sign());
                 bool success = coro();
                 if (success)
                 {
