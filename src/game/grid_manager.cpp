@@ -248,6 +248,7 @@ void GridManager::TickPhysics()
             // Temporarily add the offset to the position.
             entry.circular_dir = ivec2::dir8(proposed_dir);
             obj.grid.xf.pos += entry.circular_dir;
+            entry.remaining_vel -= entry.circular_dir;
 
 
             struct Collision
@@ -345,6 +346,7 @@ void GridManager::TickPhysics()
 
             // Undo the movement.
             obj.grid.xf.pos -= entry.circular_dir;
+            entry.remaining_vel += entry.circular_dir;
             entry.circular_dir = ivec2();
         };
 
@@ -356,9 +358,12 @@ void GridManager::TickPhysics()
                 bool success = coro();
                 if (success)
                 {
-                    // Reset failed dirs. On failure they are reset automatically.
+                    // Reset stuff. On failure it happens automatically.
                     for (auto &[id, entry] : entries)
+                    {
                         entry.failed_circular_dirs = {};
+                        entry.circular_dir = {};
+                    }
                 }
                 return success;
             };
