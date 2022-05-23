@@ -4,12 +4,12 @@
 
 static const auto tile_info = []{
     TileInfo ret[] = {
-        TileInfo{ .tile = Tile::empty },
-        TileInfo{ .tile = Tile::wall,   .tex_index = 0, .corner = -1 },
-        TileInfo{ .tile = Tile::wall_a, .tex_index = 0, .corner = 0  },
-        TileInfo{ .tile = Tile::wall_b, .tex_index = 0, .corner = 1  },
-        TileInfo{ .tile = Tile::wall_c, .tex_index = 0, .corner = 2  },
-        TileInfo{ .tile = Tile::wall_d, .tex_index = 0, .corner = 3  },
+        TileInfo{ .tile = Tile::empty,                                .mass =   0 },
+        TileInfo{ .tile = Tile::wall,   .tex_index = 0, .corner = -1, .mass = 100 },
+        TileInfo{ .tile = Tile::wall_a, .tex_index = 0, .corner =  0, .mass =  50 },
+        TileInfo{ .tile = Tile::wall_b, .tex_index = 0, .corner =  1, .mass =  50 },
+        TileInfo{ .tile = Tile::wall_c, .tex_index = 0, .corner =  2, .mass =  50 },
+        TileInfo{ .tile = Tile::wall_d, .tex_index = 0, .corner =  3, .mass =  50 },
     };
     if (std::size(ret) != std::to_underlying(Tile::_count))
         throw std::runtime_error(FMT("Wrong size of the tile info array: {}, but expected {}.", std::size(ret), std::to_underlying(Tile::_count)));

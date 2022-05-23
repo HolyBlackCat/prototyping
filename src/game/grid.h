@@ -20,6 +20,7 @@ struct TileInfo
     Tile tile{};
     int tex_index = -1; // -1 = invisible.
     int corner = -2; // -2 = empty, -1 = full tile, 0 = |/, 1 = \|, 2 = /|, 3 = |\.
+    int mass = 100; // This is integral to avoid rounding errors.
 };
 
 [[nodiscard]] const TileInfo &GetTileInfo(Tile tile);
@@ -140,6 +141,8 @@ struct Cell
     // CellLayer bg;
 
     [[nodiscard]] bool Empty() const {return mid.tile == Tile{};}
+
+    [[nodiscard]] int Mass() const {return mid.Info().mass;}
 };
 
 class Grid
@@ -151,6 +154,9 @@ class Grid
     // The `..._min` map only contains a minimal set of points, enough to ensure movement without adding new collisions.
     // The `..._full` map contains enough points to detect any collisions.
     phmap::flat_hash_map<ivec2, int> hitbox_points_min, hitbox_points_full;
+
+    // The total mass of the grid.
+    int mass = 0;
 
     // This can untrim the grid. Make sure to trim it after you're done adding tiles.
     void Resize(ivec2 offset, ivec2 new_size);
@@ -173,6 +179,8 @@ class Grid
 
     [[nodiscard]] const Array2D<Cell> Cells() const {return cells;}
 
+    [[nodiscard]] int Mass() const {return mass;}
+
     // Resizes the array to include the specified rect.
     // Then calls `void func(auto &&cell)`, where `cell` is `Cell &cell(ivec2 target)`, where `target` is relative so the `pos` parameter of the function itself.
     // `func` is only allowed to modify the specified rect, otherwise an assertion is triggered.
@@ -182,6 +190,11 @@ class Grid
     {
         if (size(any) <= 0)
             return; // Empty rect.
+
+        // Determine the starting mass of the region.
+        int starting_mass = 0;
+        for (ivec2 pos : clamp_min(pos, 0) <= vector_range < clamp_max(pos + size, cells.size()))
+            starting_mass += cells.safe_throwing_at(pos).Mass();
 
         bool should_trim = pos(any) <= 0 || (pos + size)(any) >= size;
         ivec2 offset = clamp_min(-pos, 0);
@@ -200,8 +213,14 @@ class Grid
         pos = clamped_pos;
         clamp_var_max(size, cells.size() - pos);
 
+        // Update the hitbox points.
         if (size(all) >= 0) // Sic. Since it updates a 1-tile border around the rect, empty rects are workable too.
             RegenerateHitboxPointsInRect(pos, size);
+
+        // Update the mass.
+        mass -= starting_mass;
+        for (ivec2 pos : pos <= vector_range < size)
+            mass += cells.safe_throwing_at(pos).Mass();
     }
 
     // Uses `ModifyRegion` to remove the specified tile.

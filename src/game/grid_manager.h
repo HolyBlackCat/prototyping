@@ -11,6 +11,9 @@ struct GridObject
     fvec2 vel;
     fvec2 vel_lag;
 
+    // If true, the velocity can't be changed by other objects.
+    bool infinite_mass = false;
+
     // Don't modify. This is set automatically by the grid manager.
     int aabb_node_index = -1;
 };
@@ -19,7 +22,7 @@ struct GridId
 {
     int index = -1;
 
-    [[nodiscard]] friend bool operator<=>(const GridId &, const GridId &) = default;
+    [[nodiscard]] friend auto operator<=>(const GridId &, const GridId &) = default;
 };
 template <>
 struct std::hash<GridId>

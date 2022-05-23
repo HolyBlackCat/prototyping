@@ -66,8 +66,13 @@ namespace States
                     cell(pos).mid.tile = Tile::wall;
             });
             wedge.grid.xf.pos = ivec2(-150,0);
-            wedge.vel = fvec2(0.24,0);
+            wedge.grid.xf.pos.x -= 64;
+            // wedge.vel = fvec2(0.24,0);
+            wedge.vel = fvec2(0.5,0);
             grids.AddGrid(wedge);
+
+            // float wedge2speed = 0.24;
+            float wedge2speed = 0;
 
             GridObject wedge2long;
             wedge2long.grid.ModifyRegion(ivec2(), ivec2(4,1), [](auto &&cell)
@@ -86,28 +91,39 @@ namespace States
             });
             wedge2long.grid.xf.pos = ivec2(-150+18,24);
             wedge2long.grid.xf.rot = 1;
-            wedge2long.vel = fvec2(0,0.24);
+            wedge2long.vel = fvec2(0,wedge2speed);
             grids.AddGrid(wedge2long);
             wedge2long.grid.xf.pos = ivec2(-150+18,-24);
             wedge2long.grid.xf.rot = 1;
-            wedge2long.vel = fvec2(0,-0.24);
+            wedge2long.vel = fvec2(0,-wedge2speed);
             grids.AddGrid(wedge2long);
             wedge2.grid.xf.pos = ivec2(-150+6,-42);
             wedge2.grid.xf.rot = 0;
-            wedge2.vel = fvec2(-0.24,0);
+            wedge2.vel = fvec2(-wedge2speed,0);
             grids.AddGrid(wedge2);
             wedge2.grid.xf.pos = ivec2(-150+6,42);
             wedge2.grid.xf.rot = 2;
-            wedge2.vel = fvec2(-0.24,0);
+            wedge2.vel = fvec2(-wedge2speed,0);
             grids.AddGrid(wedge2);
             wedge2.grid.xf.pos = ivec2(-150-6,-30);
             wedge2.grid.xf.rot = 3;
-            wedge2.vel = fvec2(0,0.24);
+            wedge2.vel = fvec2(0,wedge2speed);
             grids.AddGrid(wedge2);
             wedge2.grid.xf.pos = ivec2(-150-6,30);
             wedge2.grid.xf.rot = 3;
-            wedge2.vel = fvec2(0,-0.24);
+            wedge2.vel = fvec2(0,-wedge2speed);
             grids.AddGrid(wedge2);
+
+            GridObject bar;
+            bar.grid.ModifyRegion(ivec2(), ivec2(5, 1), [](auto &&cell)
+            {
+                for (ivec2 pos : vector_range(ivec2(5, 1)))
+                    cell(pos).mid.tile = Tile::wall;
+            });
+            bar.grid.xf.pos = ivec2(-90, -24);
+            grids.AddGrid(bar);
+            bar.grid.xf.pos = ivec2(-90, 24);
+            grids.AddGrid(bar);
 
             SDL_MaximizeWindow(Interface::Window::Get().Handle());
         }

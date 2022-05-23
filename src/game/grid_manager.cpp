@@ -54,11 +54,15 @@ void GridManager::Render(Xf camera) const
     aabb_t aabb;
     aabb.a = camera * (-screen_size / 2);
     aabb.b = camera * ( screen_size / 2);
+    std::vector<GridId> ids;
     CollideAabbApprox(aabb, [&](GridId id)
     {
-        GetGrid(id).grid.Render(camera);
+        ids.push_back(id);
         return false;
     });
+    std::sort(ids.begin(), ids.end());
+    for (GridId id : ids)
+        GetGrid(id).grid.Render(camera);
 }
 
 void GridManager::DebugRender(Xf camera, Grid::DebugRenderFlags flags) const
@@ -66,15 +70,30 @@ void GridManager::DebugRender(Xf camera, Grid::DebugRenderFlags flags) const
     aabb_t aabb;
     aabb.a = camera * (-screen_size / 2);
     aabb.b = camera * ( screen_size / 2);
+    std::vector<GridId> ids;
     CollideAabbApprox(aabb, [&](GridId id)
     {
-        GetGrid(id).grid.DebugRender(camera, flags);
+        ids.push_back(id);
         return false;
     });
+    std::sort(ids.begin(), ids.end());
+    for (GridId id : ids)
+        GetGrid(id).grid.DebugRender(camera, flags);
 }
 
 void GridManager::TickPhysics()
 {
+    static const auto norm_dirs = []{
+        std::array<fvec2, 8> ret;
+        for (int i = 0; i < 8; i++)
+        {
+            ret[i] = fvec2::dir8(i);
+            if (i % 2 != 0)
+                ret[i] = ret[i].norm();
+        }
+        return ret;
+    }();
+
     struct Entry
     {
         ivec2 remaining_vel;
@@ -86,11 +105,17 @@ void GridManager::TickPhysics()
         ivec2 circular_dir;
 
         // If true, circular movement in that 8-direction has failed.
-        std::array<bool, 8> failed_circular_dirs;
+        std::array<bool, 8> failed_circular_dirs{};
     };
 
-    std::vector<GridId> grids_needing_aabb_updates;
+    struct ImpulseTransferEntry
+    {
+        phmap::flat_hash_set<GridId> collision_candidates;
+    };
+
+    std::vector<GridId> aabb_update_entries;
     phmap::flat_hash_map<GridId, Entry> entries;
+    phmap::flat_hash_map<GridId, ImpulseTransferEntry> impulse_entries;
 
     // Populate entries.
     // Also move unobstructed objects early.
@@ -98,47 +123,51 @@ void GridManager::TickPhysics()
     {
         GridId grid_id = GetGridId(i);
 
-        Entry new_entry;
         GridObject &obj = grids[grid_id.index].value();
+
+        Entry new_entry;
         new_entry.remaining_vel = Math::round_with_compensation(obj.vel, obj.vel_lag);
         obj.vel_lag *= 0.99f;
 
-        // If this grid doesn't need to move, skip it.
-        if (new_entry.remaining_vel == 0)
-            continue;
+        ImpulseTransferEntry new_impulse_entry;
 
-        grids_needing_aabb_updates.push_back(grid_id);
+        // If this entry is going to move, queue it for AABB update.
+        if (new_entry.remaining_vel != 0)
+            aabb_update_entries.push_back(grid_id);
 
         // Find potentially colliding grids.
-        // Note `+ sign(...)`, which lets us reuse the grid list for impulse transfer later.
-        aabb_t expanded_aabb = GetGridAabb(obj.grid).ExpandInDir(new_entry.remaining_vel + sign(new_entry.remaining_vel));
+        // Note the final expand by 1 pixel, which lets us reuse the grid list for impulse transfer later.
+        aabb_t expanded_aabb = GetGridAabb(obj.grid).ExpandInDir(new_entry.remaining_vel).Expand(ivec2(1));
         CollideAabbApprox(expanded_aabb, [&](GridId other_grid_id)
         {
             if (other_grid_id != grid_id)
-                new_entry.collision_candidates.insert(other_grid_id);
+                new_impulse_entry.collision_candidates.insert(other_grid_id);
             return false;
         });
 
-        // If this grid can't hit any other grids, move it early and skip it.
-        if (new_entry.collision_candidates.empty())
-        {
+        // If this grid can't hit any other grids, move it early.
+        if (new_impulse_entry.collision_candidates.empty())
             obj.grid.xf.pos += new_entry.remaining_vel;
-            continue;
-        }
+        else
+            entries.try_emplace(grid_id, std::move(new_entry));
 
-        entries.try_emplace(grid_id, std::move(new_entry));
+        // Queue for impulse transfer.
+        // We add all grids here, even if they have zero velocity, because we store collision candidates in this list.
+        impulse_entries.try_emplace(grid_id, std::move(new_impulse_entry));
     }
     // Extend `collision_candidates` to make it symmetric.
     // Yes, we extended the source object hitbox when looking for candidates,
     // but we couldn't extend the candidate hitboxes, so this is still needed.
-    for (auto &[id, entry] : entries)
+    for (auto &[id, entry] : impulse_entries)
     {
         for (GridId candidate : entry.collision_candidates)
         {
-            if (auto it = entries.find(candidate); it != entries.end())
+            if (auto it = impulse_entries.find(candidate); it != impulse_entries.end())
                 it->second.collision_candidates.insert(id);
         }
     }
+    for (auto &[id, entry] : entries)
+        entry.collision_candidates = impulse_entries.at(id).collision_candidates;
 
     // Advance the objects by a single pixel.
     // First, try both directions at the same time. On failure, try the directions separately.
@@ -206,7 +235,7 @@ void GridManager::TickPhysics()
         bool any_progress = false;
 
         // Coroutine. Pauses to show a working scenario. Stops when there's no more valid scenarios.
-        auto ProcessObject = [&](auto &ProcessObject, GridId id, int proposed_dir) -> Coroutine<void>
+        auto ProcessObject = [&](auto &ProcessObject, GridId id, int proposed_dir) -> Coroutine<>
         {
             Entry &entry = entries.at(id);
             if (entry.circular_dir)
@@ -367,8 +396,111 @@ void GridManager::TickPhysics()
     }
 
     // Update AABBs.
-    for (const auto &id : grids_needing_aabb_updates)
+    for (const auto &id : aabb_update_entries)
         ModifyGrid(id, [](GridObject &){});
+
+    // Perform impulse transfer.
+    // First, sort entries by speed.
+    std::vector<decltype(impulse_entries)::value_type *> impulse_entries_sorted;
+    impulse_entries_sorted.reserve(impulse_entries.size());
+    for (auto &entry : impulse_entries)
+        impulse_entries_sorted.push_back(&entry);
+    std::sort(impulse_entries_sorted.begin(), impulse_entries_sorted.end(), [&](const auto *a, const auto *b)
+    {
+        return grids.at(a->first.index).value().vel.len_sqr() > grids.at(b->first.index).value().vel.len_sqr();
+    });
+    for (auto *entry_pair : impulse_entries_sorted)
+    {
+        GridId id = entry_pair->first;
+        ImpulseTransferEntry &entry = entry_pair->second;
+
+        GridObject &obj = grids.at(id.index).value();
+
+        for (GridId other_id : entry.collision_candidates)
+        {
+            GridObject &other_obj = grids.at(other_id.index).value();
+
+            if (obj.infinite_mass && other_obj.infinite_mass)
+                continue;
+
+            if (fvec2 vel_delta = obj.vel - other_obj.vel)
+            {
+                int dir_index_0 = vel_delta.angle8_floor() - 1;
+
+                // Whether `vel_delta` is one of the 8 main directions.
+                bool dir_is_8_aligned = vel_delta(any) == 0 || abs(vel_delta.x) == abs(vel_delta.y);
+
+                auto CollidesWithDir = [&](int dir)
+                {
+                    return obj.grid.CollidesWithGridWithCustomXfDifference(other_obj.grid, other_obj.grid.WorldToGrid() * Xf::Pos(ivec2::dir8(dir)) * obj.grid.GridToWorld(), false);
+                };
+
+                bool hit_1 = CollidesWithDir(dir_index_0 + 1);
+                bool hit_2 = CollidesWithDir(dir_index_0 + 2);
+
+                // If we have a collision, perform impulse transfer.
+                if (hit_1 || (!dir_is_8_aligned && hit_2))
+                {
+                    // Determine the best movement direction.
+                    // If null, the objects can't move relative to each other.
+                    std::optional<int> best_dir;
+
+                    if (dir_is_8_aligned)
+                    {
+                        if (!hit_1)
+                            best_dir = dir_index_0 + 1;
+                        else if (hit_2 != CollidesWithDir(dir_index_0))
+                            best_dir = dir_index_0 + (hit_2 ? 0 : 2);
+                    }
+                    else
+                    {
+                        if (hit_1 != hit_2)
+                        {
+                            best_dir = dir_index_0 + (hit_2 ? 1 : 2);
+                        }
+                        else
+                        {
+                            // Check which of the two dirs is closer to our velocity.
+                            bool prefer_dir_2 = vel_delta /dot/ norm_dirs[mod_ex(dir_index_0 + 2, 8)] > vel_delta /dot/ norm_dirs[mod_ex(dir_index_0 + 1, 8)];
+
+                            int preferred_dir = dir_index_0 + (prefer_dir_2 ? 3 : 0);
+                            int backup_dir = dir_index_0 + (prefer_dir_2 ? 0 : 3);
+
+                            if (!CollidesWithDir(preferred_dir))
+                                best_dir = preferred_dir;
+                            else if (!CollidesWithDir(backup_dir))
+                                best_dir = backup_dir;
+                        }
+                    }
+
+                    // Which body changes velocity: 0 = self, 1 = other.
+                    float mass_factor = other_obj.infinite_mass ? 0 : obj.infinite_mass ? 1 : obj.grid.Mass() / float(obj.grid.Mass() + other_obj.grid.Mass());
+
+                    if (!best_dir)
+                    {
+                        obj.vel = other_obj.vel = other_obj.vel + vel_delta * mass_factor;
+                        // obj.vel_lag = other_obj.vel_lag = (obj.vel_lag + other_obj.vel_lag) / 2;
+                    }
+                    else
+                    {
+                        fvec2 normal = norm_dirs[mod_ex(*best_dir + 2, 8)];
+                        fvec2 vel_delta_proj = Math::project_onto_line_norm(vel_delta, normal);
+
+                        obj.vel -= vel_delta_proj * (1 - mass_factor);
+                        other_obj.vel += vel_delta_proj * mass_factor;
+
+                        // // Try to sync the velocity lag.
+                        // fvec2 vel_lag_delta_proj = Math::project_onto_line_norm(obj.vel_lag - other_obj.vel_lag, normal);
+                        // obj.vel_lag -= vel_lag_delta_proj * (1 - mass_factor);
+                        // other_obj.vel_lag += vel_lag_delta_proj * mass_factor;
+                    }
+                }
+            }
+
+            // Erase this ID from the candidates of the other object, to avoid checking it twice.
+            impulse_entries.at(other_id).collision_candidates.erase(id);
+        }
+    }
 
     // Update the preferred movement direction for the next tick.
     initial_dir_for_physics_tick = !initial_dir_for_physics_tick;
