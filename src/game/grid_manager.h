@@ -76,7 +76,7 @@ public:
     template <typename F>
     void ModifyGrid(GridId id, F &&func)
     {
-        GridObject &obj = grids[id.index].value();
+        GridObject &obj = grids.at(id.index).value();
         func(obj);
         aabb_tree.ModifyNode(obj.aabb_node_index, GetGridAabb(obj.grid), round_maxabs(obj.vel));
     }

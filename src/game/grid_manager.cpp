@@ -258,25 +258,34 @@ void GridManager::TickPhysics()
             };
 
             std::vector<Collision> collisions;
-            bool fully_stuck = false;
+            bool stuck = false;
+            bool fully_stuck = false; // Not only stuck now, but won't move in this iteration at all.
 
             for (GridId candidate_id : entry.collision_candidates)
             {
                 auto candidate_iter = entries.find(candidate_id);
-                // Note that we have to check `candidate_iter->second.remaining_vel`, because this algorithm removes velocity-less entries separately, later.
-                bool candidate_is_movable = candidate_iter != entries.end() && candidate_iter->second.circular_dir == 0 && candidate_iter->second.remaining_vel;
+
+                bool candidate_was_movable = candidate_iter != entries.end();
+                // We could check `remaining_vel` here, if we didn't allow movement by expending `vel_lag`.
+                // Note that we could have grids with zero `remaining_vel` here, since this algorithm removes them later.
+                bool candidate_is_movable_now = candidate_was_movable && candidate_iter->second.circular_dir == 0;
 
                 const GridObject &candidate = GetGrid(candidate_id);
                 bool collides = obj.grid.CollidesWithGridWithCustomXfDifference(candidate.grid, candidate.grid.WorldToGrid() * obj.grid.GridToWorld(), false);
 
                 if (collides)
                 {
-                    if (!candidate_is_movable)
+                    if (!candidate_is_movable_now)
                     {
-                        fully_stuck = true;
-                        break;
+                        stuck = true;
+                        if (!candidate_was_movable)
+                        {
+                            fully_stuck = true;
+                            break;
+                        }
+                        // Otherwise don't stop yet, we want to check if we're fully stuck or not.
                     }
-                    else
+                    else if (!stuck)
                     {
                         Collision new_collision;
                         new_collision.id = candidate_id;
@@ -292,9 +301,10 @@ void GridManager::TickPhysics()
                 }
             }
 
-            if (fully_stuck)
+            if (stuck)
             {
-                entry.failed_circular_dirs[proposed_dir] = true;
+                if (fully_stuck)
+                    entry.failed_circular_dirs[proposed_dir] = true;
             }
             else if (!collisions.empty())
             {
