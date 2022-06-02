@@ -10,6 +10,7 @@ struct GridObject
     Grid grid;
     fvec2 vel;
     fvec2 vel_lag;
+    ivec2 vel_owed; // If non-zero, it will be subtracted from the movement next time the object tries to move.
 
     // If true, the velocity can't be changed by other objects.
     bool infinite_mass = false;

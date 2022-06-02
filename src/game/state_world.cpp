@@ -16,19 +16,19 @@ namespace States
 
         World()
         {
-            GridObject obj;
-            obj.grid.LoadFromFile(Program::ExeDir() + "assets/test_ship.json");
+            // GridObject obj;
+            // obj.grid.LoadFromFile(Program::ExeDir() + "assets/test_ship.json");
 
-            obj.grid.xf.pos = ivec2(0);
-            // obj.grid.xf.rot = 1;
-            obj.vel = fvec2(1,0.17);
-            // obj.vel = fvec2(1,0.23);
-            my_grid_id = grids.AddGrid(obj);
+            // obj.grid.xf.pos = ivec2(0);
+            // // obj.grid.xf.rot = 1;
+            // obj.vel = fvec2(1,0.17);
+            // // obj.vel = fvec2(1,0.23);
+            // my_grid_id = grids.AddGrid(obj);
 
-            obj.grid.xf.pos = ivec2(150,50);
-            obj.grid.xf.rot = 0;
-            obj.vel = fvec2();
-            grids.AddGrid(obj);
+            // obj.grid.xf.pos = ivec2(150,50);
+            // obj.grid.xf.rot = 0;
+            // obj.vel = fvec2();
+            // grids.AddGrid(obj);
 
             GridObject cube;
             cube.grid.ModifyRegion(ivec2(), ivec2(2), [](auto &&cell)
@@ -52,8 +52,11 @@ namespace States
                 cell(ivec2(5,2)).mid.tile = Tile::wall_a;
             });
             bracket.grid.xf.pos = cube.grid.xf.pos with(y -= 12);
-            bracket.vel = fvec2(-0.24,0);
+            bracket.vel = cube.vel with(x += 0.04);
             grids.AddGrid(bracket);
+
+            cube.grid.xf.pos = ivec2(0,-70);
+            grids.AddGrid(cube);
 
             GridObject wedge;
             wedge.grid.ModifyRegion(ivec2(), ivec2(4,2), [](auto &&cell)
