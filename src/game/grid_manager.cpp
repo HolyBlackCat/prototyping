@@ -325,9 +325,11 @@ void GridManager::TickPhysics()
 
                                 for (int i = 0; i < 2; i++)
                                 {
+                                    if (desired_dir[i] == 0)
+                                        continue;
                                     if (candidate_iter != entries.end() && sign(candidate_iter->second.remaining_vel[i]) == desired_dir[i])
                                         continue; // We can move by expending `remaining_vel`.
-                                    if (candidate.vel_owed[i] == 0)
+                                    if (candidate.vel_owed[i] == 0 && sign(desired_dir[i]) == sign(GetGrid(candidate_id).vel[i]))
                                         continue; // We can move by expending `vel_lag`.
                                     can_move = false;
                                     break;
