@@ -15,12 +15,20 @@ enum class Tile
     _count,
 };
 
+enum class TileRenderFlavor
+{
+    invis,
+    quarter, // The tile is split in four quarters.
+};
+
 struct TileInfo
 {
     Tile tile{};
-    int tex_index = -1; // -1 = invisible.
-    int corner = -2; // -2 = empty, -1 = full tile, 0 = |/, 1 = \|, 2 = /|, 3 = |\.
     int mass = 100; // This is integral to avoid rounding errors.
+    TileRenderFlavor render = TileRenderFlavor::invis;
+    int tex_index = 0;
+    int corner = -2; // -2 = empty, -1 = full tile, 0 = |/, 1 = \|, 2 = /|, 3 = |\.
+    int merge_group = 0; // Tiles with the same merge group are visually merged.
 };
 
 [[nodiscard]] const TileInfo &GetTileInfo(Tile tile);
@@ -123,6 +131,10 @@ namespace TileHitboxes
     // `point` is assumed to be in the tile AABB, otherwise the result is meaningless.
     // `point` is in double-resolution, and is pixel-centered.
     [[nodiscard]] bool TileCollidesWithPointHighRes(int corner, ivec2 point);
+
+    // `corner`: -2 = empty, -1 = full tile, 0 = |/, 1 = \|, 2 = /|, 3 = |\.
+    // Returns true if this corner type has an edge in this 4-direction `dir`.
+    [[nodiscard]] bool CornerHasEdge(int corner, int dir);
 }
 
 struct CellLayer

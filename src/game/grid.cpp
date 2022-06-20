@@ -4,12 +4,12 @@
 
 static const auto tile_info = []{
     TileInfo ret[] = {
-        TileInfo{ .tile = Tile::empty,                                .mass =   0 },
-        TileInfo{ .tile = Tile::wall,   .tex_index = 0, .corner = -1, .mass = 100 },
-        TileInfo{ .tile = Tile::wall_a, .tex_index = 0, .corner =  0, .mass =  50 },
-        TileInfo{ .tile = Tile::wall_b, .tex_index = 0, .corner =  1, .mass =  50 },
-        TileInfo{ .tile = Tile::wall_c, .tex_index = 0, .corner =  2, .mass =  50 },
-        TileInfo{ .tile = Tile::wall_d, .tex_index = 0, .corner =  3, .mass =  50 },
+        TileInfo{ .tile = Tile::empty,  .mass =   0 },
+        TileInfo{ .tile = Tile::wall,   .mass = 100, .render = TileRenderFlavor::quarter, .tex_index = 0, .corner = -1, .merge_group = 1 },
+        TileInfo{ .tile = Tile::wall_a, .mass =  50, .render = TileRenderFlavor::quarter, .tex_index = 0, .corner =  0, .merge_group = 1 },
+        TileInfo{ .tile = Tile::wall_b, .mass =  50, .render = TileRenderFlavor::quarter, .tex_index = 0, .corner =  1, .merge_group = 1 },
+        TileInfo{ .tile = Tile::wall_c, .mass =  50, .render = TileRenderFlavor::quarter, .tex_index = 0, .corner =  2, .merge_group = 1 },
+        TileInfo{ .tile = Tile::wall_d, .mass =  50, .render = TileRenderFlavor::quarter, .tex_index = 0, .corner =  3, .merge_group = 1 },
     };
     if (std::size(ret) != std::to_underlying(Tile::_count))
         throw std::runtime_error(FMT("Wrong size of the tile info array: {}, but expected {}.", std::size(ret), std::to_underlying(Tile::_count)));
@@ -144,6 +144,26 @@ namespace TileHitboxes
             return point.x < point.y;
         }
         throw std::runtime_error("Invalid corner id.");
+    }
+
+    bool CornerHasEdge(int corner, int dir)
+    {
+        dir = mod_ex(dir, 4);
+        if (corner == -2)
+            return false;
+        if (corner == -1)
+            return true;
+        corner = mod_ex(corner, 4);
+        if (dir == 0)
+            return corner == 1 || corner == 2;
+        if (dir == 1)
+            return corner == 2 || corner == 3;
+        if (dir == 2)
+            return corner == 3 || corner == 0;
+        if (dir == 3)
+            return corner == 0 || corner == 1;
+        ASSERT(false, "Invalid corner and/or direction.");
+        return false;
     }
 }
 
@@ -436,19 +456,100 @@ void Grid::Render(Xf camera, std::optional<fvec3> color) const
         const CellLayer &la = cells.safe_throwing_at(tile_pos).mid;
         const TileInfo &info = la.Info();
 
-        if (info.tex_index == -1)
-            continue; // Invisible.
+        if (info.render == TileRenderFlavor::quarter)
+        {
+            ivec2 tile_pix_pos = render_xf * (tile_pos * tile_size + tile_size/2);
 
-        ivec2 tile_pix_pos = render_xf * (tile_pos * tile_size + tile_size/2) - tile_size/2;
+            // Returns true if this tile should be drawn merged with its neighbor at `offset`.
+            auto MergeToOffset = [&](ivec2 offset) -> bool
+            {
+                ivec2 other_pos = tile_pos + offset;
+                if (!cells.pos_in_range(other_pos))
+                    return false;
+                const TileInfo &other_info = cells.safe_nonthrowing_at(other_pos).mid.Info();
+                if (offset.x == 0 || offset.y == 0)
+                {
+                    int dir = offset.angle4_floor();
+                    if (!TileHitboxes::CornerHasEdge(info.corner, dir) || !TileHitboxes::CornerHasEdge(other_info.corner, dir + 2))
+                        return false;
+                }
 
-        // Adjust the corner for rotation.
-        int corner = info.corner;
-        if (corner != -1)
-            corner = mod_ex(corner + render_xf.rot, 4);
+                return other_info.merge_group == info.merge_group;
+            };
 
-        auto quad = r.iquad(tile_pix_pos, region.region(ivec2(corner + 1, info.tex_index) * tile_size, ivec2(tile_size)));
-        if (color)
-            quad.color(*color).mix(0);
+            if (int corner = info.corner; corner >= 0)
+            {
+                ivec2 dir_a = ivec2::dir4(info.corner + 2);
+                ivec2 dir_b = ivec2::dir4(info.corner + 3);
+
+                bool merge_a = MergeToOffset(dir_a);
+                bool merge_b = MergeToOffset(dir_b);
+                bool merge_ab = merge_a && merge_b && MergeToOffset(dir_a + dir_b);
+
+                int variant;
+                bool flip = false;
+                if (!merge_a && !merge_b)
+                    variant = 3;
+                else if (merge_a && !merge_b)
+                    variant = 2, flip = true;
+                else if (!merge_a && merge_b)
+                    variant = 2;
+                else if (merge_ab)
+                    variant = 1;
+                else
+                    variant = 4;
+
+                ivec2 matrix_dir = ivec2::dir4(mod_ex(corner + render_xf.rot - flip, 4));
+                auto quad = r.iquad(tile_pix_pos, region.region(ivec2(variant, info.tex_index) * tile_size, ivec2(tile_size))).center().matrix(imat2(matrix_dir, matrix_dir.rot90())).flip_x(flip);
+                if (color)
+                    quad.color(*color).mix(0);
+            }
+            else
+            {
+                bool merge[4];
+                bool merge_diag[4];
+                for (int i = 0; i < 4; i++)
+                    merge[i] = MergeToOffset(ivec2::dir4(i - xf.rot));
+                for (int i = 0; i < 4; i++)
+                    merge_diag[i] = merge[i] && merge[mod_ex(i + 1, 4)] && MergeToOffset(ivec2::dir8(1 + i * 2));
+
+                for (int i = 0; i < 4; i++)
+                {
+
+                    ivec2 sector_dir = ivec2::dir4_diag(i);
+                    ivec2 sector = clamp_min(sector_dir, 0);
+
+                    ivec2 variant;
+
+                    int next_i = mod_ex(i + 1, 4);
+
+                    bool flip_diag = false;
+
+                    if (merge_diag[i])
+                        variant = ivec2(0, 1);
+                    else if (!merge[i] && !merge[next_i])
+                        variant = ivec2(0, 0);
+                    else if (merge[i] != merge[next_i])
+                        variant = ivec2(1, 0), flip_diag = (merge[i] == (i % 2));
+                    else if (merge[i] && merge[next_i])
+                        variant = ivec2(1, 1);
+                    else
+                        ASSERT(false, "Unsure what tile variant to use.");
+
+                    ivec2 dir = ivec2::dir4(flip_diag);
+                    auto quad = r.fquad(tile_pix_pos + tile_size/2 * (sector - 1) + tile_size/4.f, region.region(ivec2(0, info.tex_index) * tile_size + variant * tile_size/2, ivec2(tile_size/2))).center().matrix(imat2(dir, dir.rot90()));
+
+                    if (flip_diag ? !sector.y : sector.x)
+                        quad.flip_x();
+                    if (flip_diag ? !sector.x : sector.y)
+                        quad.flip_y();
+                    if (color)
+                        quad.color(*color).mix(0);
+                }
+            }
+
+
+        }
     }
 }
 

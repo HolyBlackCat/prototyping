@@ -16,19 +16,19 @@ namespace States
 
         World()
         {
-            // GridObject obj;
-            // obj.grid.LoadFromFile(Program::ExeDir() + "assets/test_ship.json");
+            GridObject obj;
+            obj.grid.LoadFromFile(Program::ExeDir() + "assets/test_ship.json");
 
             // obj.grid.xf.pos = ivec2(0);
-            // // obj.grid.xf.rot = 1;
+            // obj.grid.xf.rot = 1;
             // obj.vel = fvec2(1,0.17);
-            // // obj.vel = fvec2(1,0.23);
-            // my_grid_id = grids.AddGrid(obj);
-
-            // obj.grid.xf.pos = ivec2(150,50);
-            // obj.grid.xf.rot = 0;
-            // obj.vel = fvec2();
+            // obj.vel = fvec2(1,0.23);
             // grids.AddGrid(obj);
+
+            obj.grid.xf.pos = ivec2(150,50);
+            obj.grid.xf.rot = 0;
+            obj.vel = fvec2();
+            my_grid_id = grids.AddGrid(obj);
 
             GridObject cube;
             cube.grid.ModifyRegion(ivec2(), ivec2(2), [](auto &&cell)
